@@ -20,26 +20,36 @@
             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1);
             cursor: grab;
             position: absolute;
-            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease, top 0.2s ease, left 0.2s ease;
+            /* Removed top/left transition, keep others */
+            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease; 
             z-index: 10;
-            border-radius: 4px; /* Slightly rounded corners for pieces */
+            border-radius: 4px; 
             background-repeat: no-repeat;
+            /* Will-change can hint browser about upcoming transforms */
+            will-change: transform; 
         }
-        .puzzle-piece:active {
+        .puzzle-piece.dragging { /* Style applied during drag */
+             transition: none !important; /* Disable transitions during drag */
+             opacity: 0.7;
+             z-index: 20;
+             transform: scale(1.05); /* Apply scale via transform */
+             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2);
+        }
+        .puzzle-piece:active { /* Primarily for mouse interaction */
             cursor: grabbing;
             z-index: 20;
             transform: scale(1.05);
             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2);
-            transition: none; /* Disable transition while actively dragging */
+            transition: none; 
         }
         /* Style for the target puzzle board */
         #puzzle-board {
             position: relative;
             border: 2px dashed #a0aec0;
-            background-color: #f0f4f8; /* Slightly different background */
+            background-color: #f0f4f8; 
             overflow: hidden;
-            border-radius: 8px; /* Rounded corners for board */
-            transition: background-image 0.5s ease-in-out; /* Smooth background change */
+            border-radius: 8px; 
+            transition: background-image 0.5s ease-in-out; 
         }
         /* Transparent background guide image */
         #puzzle-board::before {
@@ -48,7 +58,7 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background-image: var(--puzzle-background-image);
             background-size: 100% 100%;
-            opacity: 0.2; /* Slightly less opaque guide */
+            opacity: 0.2; 
             z-index: 1;
             border-radius: inherit;
             pointer-events: none;
@@ -73,9 +83,8 @@
         /* Style for placeholder slots */
         .placeholder-slot {
             position: absolute;
-            /* border: 1px dotted #cbd5e0; */ /* Keep commented out unless debugging */
-            background-color: rgba(203, 213, 224, 0.05); /* Very faint */
-            border-radius: 2px; /* Smaller radius for slots */
+            background-color: rgba(203, 213, 224, 0.05); 
+            border-radius: 2px; 
             z-index: 2;
         }
         /* Success message styling */
@@ -85,7 +94,7 @@
          /* Loading message styling */
         #loading-message {
              transition: opacity 0.3s ease-in-out;
-             border-radius: 8px; /* Match container rounding */
+             border-radius: 8px; 
         }
         /* Error message styling */
         #load-error-message {
@@ -121,6 +130,7 @@
 
     <h1 class="text-2xl md:text-3xl font-bold text-gray-700 mb-6">Puzzle Time!</h1>
 
+    
     <div class="w-full max-w-xl mx-auto mb-4 p-4 bg-white rounded-lg shadow-md">
         <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-2 text-center">Choose Puzzle Image:</label>
@@ -160,16 +170,14 @@
     <script>
         // --- Configuration ---
         const defaultGridSize = 3;
-        const snap_tolerance = 35; // Pixels within which the piece snaps
+        const snap_tolerance = 35;
 
         // --- Available Images ---
-        // IMPORTANT: Paths like "images/..." only work if served from a web server.
-        // They won't work if you open the HTML file directly from your computer.
         const availableImages = [
-            { name: "Unicorn", path: "unicorn.png", emoji: "🦄" },
-            { name: "Kitten", path: "images/kitten.png", emoji: "🐱" }, // Example: Assumes images/kitten.png exists
-            { name: "Puppy", path: "images/puppy.png", emoji: "🐶" },   // Example: Assumes images/puppy.png exists
-            // Add more images here following the pattern { name: "Display Name", path: "path/to/image.jpg", emoji: "❓" }
+            { name: "Unicorn", path: "images/unicorn.png", emoji: "🦄" },
+            { name: "Kitten", path: "images/kitten.png", emoji: "🐱" },
+            { name: "Puppy", path: "images/puppy.png", emoji: "🐶" },
+            { name: "Landscape", path: "images/landscape.png", emoji: "🏞️" }
         ];
 
         // --- Elements ---
@@ -182,14 +190,24 @@
         const loadErrorMessage = document.getElementById('load-error-message');
 
         // --- State ---
-        let currentImageUrl = ''; // Will be set on initial load
+        let currentImageUrl = '';
         let currentGridSize = defaultGridSize;
         let pieces = [];
-        let imageWidth, imageHeight; // Dimensions of the currently loaded image
-        let boardWidth, boardHeight; // Display dimensions of the board
+        let imageWidth, imageHeight;
+        let boardWidth, boardHeight;
         let correctlyPlacedCount = 0;
         let snapSynth;
-        let clapVoice; // Single NoiseSynth instance for applause
+        let clapVoice;
+        let isDragging = false; // Flag for dragging state
+        let draggedPiece = null;
+        let touchMoveRafId = null; // For requestAnimationFrame throttling
+        let currentX = 0; // Store current drag position
+        let currentY = 0;
+        let initialX = 0; // Initial position of piece before drag
+        let initialY = 0;
+        let touchOffsetX = 0; // Offset within the piece
+        let touchOffsetY = 0;
+
 
         // --- Sound Initialization ---
         function initializeSound() {
@@ -198,31 +216,11 @@
                      if (Tone.context.state !== 'running') {
                          Tone.start().then(() => {
                              console.log("Audio Context started by user interaction.");
-                             // Initialize snap synth
-                             if (!snapSynth) {
-                                 try {
-                                     snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination();
-                                     console.log("SnapSynth initialized.");
-                                 } catch (e) { console.error("Error initializing SnapSynth:", e); }
-                             }
-                             // Initialize SINGLE NoiseSynth for clapping
-                             if (!clapVoice) {
-                                 try {
-                                     clapVoice = new Tone.NoiseSynth({
-                                         noise: { type: 'pink' },
-                                         // Envelope with sustain for applause
-                                         envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 },
-                                         volume: -12 // Adjusted volume
-                                     }).toDestination();
-                                     console.log("ClapVoice (NoiseSynth) initialized.");
-                                 } catch (e) {
-                                     console.error("Error initializing ClapVoice (NoiseSynth):", e);
-                                 }
-                             }
+                             if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
+                             if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } }
                          }).catch(e => { console.error("Error starting Tone.js AudioContext:", e); });
                      } else {
                           console.log("Audio Context already running.");
-                         // Initialize if needed (with try/catch)
                          if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
                          if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } }
                      }
@@ -246,8 +244,7 @@
 
             const numberOfClaps = 64; // Increased clap count
             const timeSpreadMs = 800;
-            // Duration should roughly match the envelope's total time
-            const clapDuration = clapVoice.envelope.attack + clapVoice.envelope.decay + clapVoice.envelope.sustain + clapVoice.envelope.release;
+            const clapDuration = 0.001 + 0.1 + 0.1 + 0.1; // attack + decay + sustain + release
 
             console.log("Attempting to play applause using single NoiseSynth with setTimeout...");
             try {
@@ -256,7 +253,6 @@
                     setTimeout(() => {
                         if (clapVoice && Tone.context.state === 'running') {
                             try {
-                                // Use triggerAttackRelease on the single instance
                                 clapVoice.triggerAttackRelease(clapDuration);
                             } catch (triggerError) {
                                  console.error(`Error triggering clap inside setTimeout:`, triggerError);
@@ -278,7 +274,7 @@
             loadingMessage.style.pointerEvents = 'auto';
 
             const img = new Image();
-            // No crossOrigin attribute for potentially local files
+            // No crossOrigin attribute needed for same-origin or properly configured CORS URLs
 
             img.onload = () => {
                 console.log("Image loaded successfully:", url);
@@ -289,7 +285,7 @@
                      loadErrorMessage.textContent = "Image seems invalid (zero size).";
                      callback(null);
                 } else {
-                    currentImageUrl = url; // Update global state
+                    currentImageUrl = url;
                     callback(img);
                 }
             };
@@ -299,9 +295,9 @@
                 loadingMessage.style.opacity = '0';
                 loadingMessage.style.pointerEvents = 'none';
                 if (url.startsWith("file:") || (!url.startsWith("http:") && !url.startsWith("https:") && !url.startsWith("blob:") && !url.startsWith("data:"))) {
-                     loadErrorMessage.textContent = "Error: Cannot load local images directly. Please use a web server.";
+                     loadErrorMessage.textContent = "Error: Cannot load local images. Please run from a web server.";
                 } else {
-                     loadErrorMessage.textContent = "Failed to load image. Check URL or server.";
+                     loadErrorMessage.textContent = "Failed to load image. Check URL/path & server settings (CORS?).";
                 }
                 callback(null);
             };
@@ -334,57 +330,173 @@
         function shuffleAndPlacePieces() { const shuffledPieces = [...pieces].sort(() => Math.random() - 0.5); const containerRect = piecesContainer.getBoundingClientRect(); if (containerRect.width === 0 || containerRect.height === 0 || !boardWidth) { console.warn("Container/board dimensions not ready for shuffling."); requestAnimationFrame(shuffleAndPlacePieces); return; } const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; shuffledPieces.forEach(piece => { const pieceW = piece.offsetWidth || scaledPieceWidth; const pieceH = piece.offsetHeight || scaledPieceHeight; const maxPosX = containerRect.width - pieceW; const maxPosY = containerRect.height - pieceH; const randomX = Math.max(5, Math.random() * (maxPosX - 10)); const randomY = Math.max(5, Math.random() * (maxPosY - 10)); piece.style.left = `${randomX}px`; piece.style.top = `${randomY}px`; piece.style.position = 'absolute'; piecesContainer.appendChild(piece); }); }
 
         // --- Drag and Drop Handlers ---
-        let draggedPiece = null; let offsetX = 0; let offsetY = 0;
+        // Mouse Drag Handlers
         function handleDragStart(e) { if (e.target.classList.contains('glow')) { e.preventDefault(); return; } draggedPiece = e.target; offsetX = e.offsetX; offsetY = e.offsetY; e.dataTransfer.setData('text/plain', draggedPiece.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => { if(draggedPiece) draggedPiece.style.opacity = '0.7'; }, 0); }
         function handleDragEnd(e) { if (draggedPiece) { if (draggedPiece.parentElement !== puzzleBoard) { draggedPiece.style.opacity = '1'; } draggedPiece = null; } }
         function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
         function handleDrop(e) {
             e.preventDefault(); const pieceId = e.dataTransfer.getData('text/plain'); const droppedPiece = document.getElementById(pieceId); if (!droppedPiece || droppedPiece.parentElement === puzzleBoard) return; const boardRect = puzzleBoard.getBoundingClientRect(); const dropX = e.clientX - boardRect.left; const dropY = e.clientY - boardRect.top; const correctX = parseFloat(droppedPiece.dataset.correctX); const correctY = parseFloat(droppedPiece.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const pieceDropCenterX = dropX - offsetX + scaledPieceWidth / 2; const pieceDropCenterY = dropY - offsetY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(pieceDropCenterX - targetCenterX, 2) + Math.pow(pieceDropCenterY - targetCenterY, 2) );
             if (distance <= snap_tolerance) {
-                const pieceElement = droppedPiece; // Use consistent variable name
+                const pieceElement = droppedPiece;
                 pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.style.opacity = '1'; pieceElement.draggable = false; pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                
-                // Remove glow after delay
-                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
-
+                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
                 correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                if (correctlyPlacedCount === currentGridSize * currentGridSize) {
-                     console.log("Puzzle Solved!");
-                     playApplauseSound();
-                     // Delay success message
-                     setTimeout(showSuccessMessage, 1000); // 1 second delay
-                }
-                else { playSnapSound(); } // Play snap only if not complete
+                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success
+                else { playSnapSound(); }
              } else { if(droppedPiece) droppedPiece.style.opacity = '1'; }
              draggedPiece = null;
         }
 
-        // --- Touch Event Handlers ---
-        let currentTouchPiece = null; let touchOffsetX = 0; let touchOffsetY = 0;
-        function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); currentTouchPiece = e.target; const touch = e.touches[0]; const rect = currentTouchPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; currentTouchPiece.style.position = 'fixed'; currentTouchPiece.style.left = `${rect.left}px`; currentTouchPiece.style.top = `${rect.top}px`; currentTouchPiece.style.zIndex = '20'; currentTouchPiece.style.transform = 'scale(1.05)'; currentTouchPiece.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2)'; currentTouchPiece.style.opacity = '0.7'; }
-        function handleTouchMove(e) { if (!currentTouchPiece) return; e.preventDefault(); const touch = e.touches[0]; const newX = touch.clientX - touchOffsetX; const newY = touch.clientY - touchOffsetY; currentTouchPiece.style.left = `${newX}px`; currentTouchPiece.style.top = `${newY}px`; }
-        function handleTouchEnd(e) { if (!currentTouchPiece) return; const pieceElement = currentTouchPiece; pieceElement.style.zIndex = '10'; pieceElement.style.transform = 'scale(1)'; pieceElement.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1)'; pieceElement.style.opacity = '1'; const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceWidthCurrent = pieceElement.offsetWidth; const pieceHeightCurrent = pieceElement.offsetHeight; const pieceCenterX = touch.clientX - touchOffsetX + pieceWidthCurrent / 2; const pieceCenterY = touch.clientY - touchOffsetY + pieceHeightCurrent / 2;
-            if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right && pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
-                const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
-                if (distance <= snap_tolerance) {
-                    pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.draggable = false; pieceElement.removeEventListener('touchstart', handleTouchStart); pieceElement.removeEventListener('touchmove', handleTouchMove); pieceElement.removeEventListener('touchend', handleTouchEnd); pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                   
-                   // Remove glow after delay
-                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
+        // --- Touch Event Handlers (Optimized) ---
+        function handleTouchStart(e) {
+             if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return;
+             e.preventDefault(); // Prevent scroll/zoom only when starting drag on a piece
 
-                    correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                    if (correctlyPlacedCount === currentGridSize * currentGridSize) {
-                        console.log("Puzzle Solved!");
-                        playApplauseSound();
-                        // Delay success message
-                        setTimeout(showSuccessMessage, 1000); // 1 second delay
-                    }
-                    else { playSnapSound(); } // Play snap only if not complete
-                } else { snapPieceBack(pieceElement); }
-            } else { snapPieceBack(pieceElement); }
-            currentTouchPiece = null;
+             draggedPiece = e.target; // Use the same draggedPiece variable
+             const touch = e.touches[0];
+
+             // Calculate initial offset relative to the piece itself
+             const rect = draggedPiece.getBoundingClientRect();
+             touchOffsetX = touch.clientX - rect.left;
+             touchOffsetY = touch.clientY - rect.top;
+
+             // Store initial position relative to viewport for transform calculation
+             initialX = rect.left;
+             initialY = rect.top;
+             currentX = initialX;
+             currentY = initialY;
+
+             // Style for dragging state (using transform for positioning)
+             draggedPiece.classList.add('dragging');
+             draggedPiece.style.position = 'fixed'; // Use fixed during drag for viewport relative positioning
+             draggedPiece.style.left = `${initialX}px`; // Set initial fixed position
+             draggedPiece.style.top = `${initialY}px`;
+             draggedPiece.style.transform = 'scale(1.05)'; // Apply scale immediately
+
+             isDragging = true;
+             // Start the animation frame loop if not already running
+             if (!touchMoveRafId) {
+                 touchMoveRafId = requestAnimationFrame(updateTouchDragPosition);
+             }
+             console.log(`Touch start on piece: ${draggedPiece.id}`);
         }
-        function snapPieceBack(piece) { piecesContainer.appendChild(piece); const containerRect = piecesContainer.getBoundingClientRect(); const pieceW = piece.offsetWidth || (boardWidth / currentGridSize); const pieceH = piece.offsetHeight || (boardHeight / currentGridSize); const containerW = containerRect.width; const containerH = containerRect.height; if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.position = 'absolute'; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; } }
+
+        function handleTouchMove(e) {
+             if (!isDragging || !draggedPiece) return;
+             e.preventDefault(); // Prevent scrolling while dragging
+
+             const touch = e.touches[0];
+             // Update current position based on touch movement and initial offset
+             currentX = touch.clientX - touchOffsetX;
+             currentY = touch.clientY - touchOffsetY;
+             // Position update will happen in updateTouchDragPosition via rAF
+        }
+
+        // Function called by requestAnimationFrame to update position smoothly
+        function updateTouchDragPosition() {
+            if (!isDragging || !draggedPiece) {
+                touchMoveRafId = null; // Stop the loop if dragging stopped
+                return;
+            }
+            // Apply the latest position using transform
+            draggedPiece.style.left = `${currentX}px`;
+            draggedPiece.style.top = `${currentY}px`;
+
+            // Request the next frame
+            touchMoveRafId = requestAnimationFrame(updateTouchDragPosition);
+        }
+
+
+        function handleTouchEnd(e) {
+             if (!isDragging || !draggedPiece) return;
+
+             // Cancel the animation frame loop
+             if (touchMoveRafId) {
+                 cancelAnimationFrame(touchMoveRafId);
+                 touchMoveRafId = null;
+             }
+             isDragging = false;
+             const pieceElement = draggedPiece; // Keep reference
+
+             // Restore styles immediately, position will be set on snap or snap back
+             pieceElement.classList.remove('dragging');
+             pieceElement.style.transform = 'scale(1)'; // Reset scale
+             pieceElement.style.opacity = '1'; // Reset opacity
+
+             console.log(`Touch end for piece: ${pieceElement.id}`);
+
+             const touch = e.changedTouches[0];
+             const boardRect = puzzleBoard.getBoundingClientRect();
+
+             // Calculate the center of the piece at the final touch position (relative to viewport)
+             const pieceRect = pieceElement.getBoundingClientRect(); // Get final rect after drag
+             const pieceCenterX = pieceRect.left + pieceRect.width / 2;
+             const pieceCenterY = pieceRect.top + pieceRect.height / 2;
+
+             // Check if the drop point (center of the piece) is over the board
+             if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right &&
+                 pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
+
+                 // Calculate drop position relative to the puzzle board's top-left
+                 const dropX = pieceCenterX - boardRect.left;
+                 const dropY = pieceCenterY - boardRect.top;
+
+                 const correctX = parseFloat(pieceElement.dataset.correctX);
+                 const correctY = parseFloat(pieceElement.dataset.correctY);
+                 const scaledPieceWidth = boardWidth / currentGridSize;
+                 const scaledPieceHeight = boardHeight / currentGridSize;
+                 const targetCenterX = correctX + scaledPieceWidth / 2;
+                 const targetCenterY = correctY + scaledPieceHeight / 2;
+                 const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
+
+                 if (distance <= snap_tolerance) {
+                     console.log("Snapping piece (touch)!");
+                     // Snap the piece into place (relative to board)
+                     pieceElement.style.position = 'absolute'; // Back to absolute
+                     pieceElement.style.left = `${correctX}px`;
+                     pieceElement.style.top = `${correctY}px`;
+                     pieceElement.draggable = false;
+                     pieceElement.removeEventListener('touchstart', handleTouchStart);
+                     pieceElement.removeEventListener('touchmove', handleTouchMove);
+                     pieceElement.removeEventListener('touchend', handleTouchEnd);
+                     pieceElement.classList.add('glow');
+                     pieceElement.style.cursor = 'default';
+                     puzzleBoard.appendChild(pieceElement); // Move to board
+
+                     setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
+
+                     correctlyPlacedCount++;
+                     console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
+
+                     if (correctlyPlacedCount === currentGridSize * currentGridSize) {
+                         console.log("Puzzle Solved!");
+                         playApplauseSound();
+                         setTimeout(showSuccessMessage, 1000); // Delayed success
+                     } else {
+                         playSnapSound(); // Play snap only if not complete
+                     }
+                 } else {
+                     console.log("Touch dropped too far from correct spot.");
+                     snapPieceBack(pieceElement); // Snap back to pieces container
+                 }
+             } else {
+                 console.log("Touch dropped outside board.");
+                 snapPieceBack(pieceElement); // Snap back to pieces container
+             }
+             draggedPiece = null; // Clear reference
+        }
+
+        function snapPieceBack(piece) {
+             // Reset styles before appending back
+             piece.style.position = 'absolute';
+             piece.style.transform = ''; // Clear transform if any lingering scale
+             piecesContainer.appendChild(piece);
+             const containerRect = piecesContainer.getBoundingClientRect();
+             const pieceW = piece.offsetWidth || (boardWidth / currentGridSize);
+             const pieceH = piece.offsetHeight || (boardHeight / currentGridSize);
+             const containerW = containerRect.width; const containerH = containerRect.height;
+             if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; }
+        }
 
         // --- Success ---
         function showSuccessMessage() { successMessage.style.opacity = '1'; successMessage.style.pointerEvents = 'auto'; }
@@ -394,58 +506,40 @@
         const handleResize = debounce(() => { console.log("Window resized, recalculating layout..."); if(currentImageUrl && imageWidth && imageHeight) { loadImage(currentImageUrl, setupBoardAndPieces); } }, 250);
         window.addEventListener('resize', handleResize);
 
+
         // --- Populate UI Controls ---
         function populateImageSelector() {
             imageSelectorContainer.innerHTML = ''; // Clear existing buttons
             availableImages.forEach((imgData, index) => {
                 const button = document.createElement('button');
-                button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100');
+                button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100', 'flex', 'flex-col', 'items-center', 'w-20'); // Fixed width for buttons
                 button.dataset.imagePath = imgData.path;
                 button.innerHTML = `
-                    <span class="text-2xl block">${imgData.emoji}</span>
-                    <span class="block text-xs mt-1">${imgData.name}</span>
+                    <span class="text-3xl">${imgData.emoji}</span>
+                    <span class="block text-xs mt-1 truncate">${imgData.name}</span>
                 `;
                 button.addEventListener('click', () => {
-                    // Remove selected class from all buttons
                     document.querySelectorAll('.image-select-button').forEach(btn => btn.classList.remove('selected'));
-                    // Add selected class to clicked button
                     button.classList.add('selected');
-                    // Load the image
                     loadImage(imgData.path, setupBoardAndPieces);
                 });
                 imageSelectorContainer.appendChild(button);
-                // Select the first button by default
-                if (index === 0) {
-                    button.classList.add('selected');
-                }
+                if (index === 0) { button.classList.add('selected'); } // Select first one initially
             });
         }
 
         function populateGridSizeSelector() {
-            for (let size = 2; size <= 16; size++) {
-                const option = document.createElement('option');
-                option.value = size;
-                option.textContent = `${size} x ${size}`;
-                if (size === defaultGridSize) {
-                    option.selected = true;
-                }
-                gridSizeSelect.appendChild(option);
-            }
-            gridSizeSelect.addEventListener('change', (event) => {
-                // Reload the current image with the new grid size
-                loadImage(currentImageUrl, setupBoardAndPieces);
-            });
+            for (let size = 2; size <= 16; size++) { const option = document.createElement('option'); option.value = size; option.textContent = `${size} x ${size}`; if (size === defaultGridSize) { option.selected = true; } gridSizeSelect.appendChild(option); }
+            gridSizeSelect.addEventListener('change', (event) => { loadImage(currentImageUrl, setupBoardAndPieces); });
         }
 
         // --- Initial Game Setup ---
         function initializeGame() {
             populateImageSelector();
             populateGridSizeSelector();
-
-            // Initial load with default image and grid size
-            currentImageUrl = availableImages[0].path;
+            currentImageUrl = availableImages[0].path; // Set initial URL from array
             currentGridSize = defaultGridSize;
-            loadImage(currentImageUrl, setupBoardAndPieces);
+            loadImage(currentImageUrl, setupBoardAndPieces); // Start loading default image
         }
 
         // Run initialization when the DOM is ready
