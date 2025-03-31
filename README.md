@@ -13,4 +13,4 @@ Full chat using Gemini Pro 2.5 (as of 2025-03-30): https://g.co/gemini/share/862
 
 - Initial working version: https://g.co/gemini/share/e8834f232f1d
 - With custom URL loading: https://g.co/gemini/share/b93935b4b31a
-- Sound and choice of differently loaded imaged: https://g.co/gemini/share/8621e119c616
+- Sound and choice of differently loaded imaged: https://g.co/gemini/share/b8d0f6b58ae7
