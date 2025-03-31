@@ -12,30 +12,27 @@
         /* Basic styling */
         body {
             font-family: 'Inter', sans-serif;
-            touch-action: none; /* Prevent default touch actions like scrolling */
         }
         /* Style for the puzzle pieces */
         .puzzle-piece {
-            /* background-size will be set dynamically by JS */
             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1);
             cursor: grab;
             position: absolute;
-            /* Removed top/left transition, keep others */
-            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease; 
+            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease, top 0.2s ease, left 0.2s ease;
             z-index: 10;
             border-radius: 4px; 
             background-repeat: no-repeat;
-            /* Will-change can hint browser about upcoming transforms */
             will-change: transform; 
+            touch-action: none; /* Prevent scroll ONLY when dragging a piece */
         }
-        .puzzle-piece.dragging { /* Style applied during drag */
-             transition: none !important; /* Disable transitions during drag */
+        .puzzle-piece.dragging { 
+             transition: none !important; 
              opacity: 0.7;
              z-index: 20;
-             transform: scale(1.05); /* Apply scale via transform */
+             transform: scale(1.05); 
              box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2);
         }
-        .puzzle-piece:active { /* Primarily for mouse interaction */
+        .puzzle-piece:active { 
             cursor: grabbing;
             z-index: 20;
             transform: scale(1.05);
@@ -131,19 +128,28 @@
     <h1 class="text-2xl md:text-3xl font-bold text-gray-700 mb-6">Puzzle Time!</h1>
 
     
-    <div class="w-full max-w-xl mx-auto mb-4 p-4 bg-white rounded-lg shadow-md">
+    <div class="w-full max-w-2xl mx-auto mb-4 p-4 bg-white rounded-lg shadow-md">
         <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-2 text-center">Choose Puzzle Image:</label>
             <div id="image-selector-container" class="flex flex-wrap gap-3 justify-center">
-                </div>
+                
+            </div>
         </div>
-
-        <div class="flex justify-center items-center gap-3">
-            <label for="grid-size-select" class="text-sm font-medium text-gray-700">Grid Size:</label>
-            <select id="grid-size-select" class="w-auto px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+        <div class="flex flex-wrap justify-center items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="grid-size-select" class="text-sm font-medium text-gray-700">Grid Size:</label>
+                <select id="grid-size-select" class="w-auto px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                 </select>
+            </div>
+            <div class="flex items-center">
+                 <label for="mute-button" class="text-sm font-medium text-gray-700 mr-2">Sound:</label>
+                 <button id="mute-button" type="button" class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" aria-label="Mute/Unmute Sounds">
+                     <img id="mute-icon" src="https://unpkg.com/lucide-static@latest/icons/volume-2.svg" alt="Mute/Unmute" class="w-5 h-5 text-gray-600">
+                 </button>
+            </div>
         </div>
-        <p id="load-error-message" class="mt-2 h-5"></p> </div>
+        <p id="load-error-message" class="mt-2 h-5"></p> 
+    </div>
 
     <div class="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-start">
         <div class="bg-white p-4 rounded-lg shadow-md order-2 md:order-1">
@@ -174,11 +180,15 @@
 
         // --- Available Images ---
         const availableImages = [
-            { name: "Unicorn", path: "images/unicorn.png", emoji: "🦄" },
+            { name: "Unicorn", path: "https://t4.ftcdn.net/jpg/10/35/40/59/360_F_1035405936_qI2uP0IG1ZUzijmz4tlU1i2Da7fzIBtY.jpg", emoji: "🦄" },
             { name: "Kitten", path: "images/kitten.png", emoji: "🐱" },
             { name: "Puppy", path: "images/puppy.png", emoji: "🐶" },
-            { name: "Landscape", path: "images/landscape.png", emoji: "🏞️" }
+            { name: "Landscape", path: "images/landscape.jpg", emoji: "🏞️" }
         ];
+
+        // --- Icon URLs ---
+        const iconVolumeOn = "https://unpkg.com/lucide-static@latest/icons/volume-2.svg";
+        const iconVolumeOff = "https://unpkg.com/lucide-static@latest/icons/volume-x.svg";
 
         // --- Elements ---
         const piecesContainer = document.getElementById('pieces-container');
@@ -188,6 +198,8 @@
         const imageSelectorContainer = document.getElementById('image-selector-container');
         const gridSizeSelect = document.getElementById('grid-size-select');
         const loadErrorMessage = document.getElementById('load-error-message');
+        const muteButton = document.getElementById('mute-button');
+        const muteIcon = document.getElementById('mute-icon');
 
         // --- State ---
         let currentImageUrl = '';
@@ -196,123 +208,158 @@
         let imageWidth, imageHeight;
         let boardWidth, boardHeight;
         let correctlyPlacedCount = 0;
-        let snapSynth;
-        let clapVoice;
-        let isDragging = false; // Flag for dragging state
+        let snapSynth = null; // Initialize as null
+        let clapVoice = null; // Initialize as null
+        let isMuted = false;
+        let isDragging = false;
         let draggedPiece = null;
-        let touchMoveRafId = null; // For requestAnimationFrame throttling
-        let currentX = 0; // Store current drag position
-        let currentY = 0;
-        let initialX = 0; // Initial position of piece before drag
-        let initialY = 0;
-        let touchOffsetX = 0; // Offset within the piece
-        let touchOffsetY = 0;
-
+        let touchMoveRafId = null;
+        let currentX = 0; let currentY = 0; let initialX = 0; let initialY = 0; let touchOffsetX = 0; let touchOffsetY = 0;
+        let audioInitialized = false; // Flag to track if audio context is ready AND synths initialized
 
         // --- Sound Initialization ---
         function initializeSound() {
-            if ((!snapSynth || !clapVoice) && typeof Tone !== 'undefined') {
+            // Only initialize if Tone is available and not already done
+            if (!audioInitialized && typeof Tone !== 'undefined') {
                  const startAudio = () => {
-                     if (Tone.context.state !== 'running') {
-                         Tone.start().then(() => {
-                             console.log("Audio Context started by user interaction.");
-                             if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
-                             if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } }
-                         }).catch(e => { console.error("Error starting Tone.js AudioContext:", e); });
-                     } else {
-                          console.log("Audio Context already running.");
-                         if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
-                         if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } }
+                     // Prevent multiple initializations if already started
+                     if (Tone.context.state === 'running' && audioInitialized) {
+                         document.body.removeEventListener('pointerdown', startAudio);
+                         document.body.removeEventListener('touchstart', startAudio);
+                         return;
                      }
-                     document.body.removeEventListener('pointerdown', startAudio); document.body.removeEventListener('touchstart', startAudio);
+
+                     Tone.start().then(() => {
+                         console.log("Audio Context started by user interaction.");
+                         let snapSuccess = false;
+                         let clapSuccess = false;
+
+                         // Initialize snap synth
+                         if (!snapSynth) {
+                             try {
+                                 snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination();
+                                 console.log("SnapSynth initialized.");
+                                 snapSuccess = true;
+                             } catch (e) { console.error("Error initializing SnapSynth:", e); }
+                         } else {
+                             snapSuccess = true; // Already existed
+                         }
+
+                         // Initialize SINGLE NoiseSynth for clapping
+                         if (!clapVoice) {
+                             try {
+                                 clapVoice = new Tone.NoiseSynth({
+                                     noise: { type: 'pink' },
+                                     envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 },
+                                     volume: -12
+                                 }).toDestination();
+                                 console.log("ClapVoice (NoiseSynth) initialized.");
+                                 clapSuccess = true;
+                             } catch (e) {
+                                 console.error("Error initializing ClapVoice (NoiseSynth):", e);
+                             }
+                         } else {
+                            clapSuccess = true; // Already existed
+                         }
+
+                         // Mark audio as initialized only if *both* synths are ready
+                         audioInitialized = snapSuccess && clapSuccess;
+                         if (audioInitialized) {
+                            Tone.Master.mute = isMuted; // Apply mute state
+                            console.log("Audio initialization complete.");
+                         } else {
+                            console.error("Audio initialization failed for one or more synths.");
+                         }
+
+                     }).catch(e => {
+                         console.error("Error starting Tone.js AudioContext:", e);
+                         audioInitialized = false;
+                     }).finally(() => {
+                         // Always remove listeners after the attempt
+                         document.body.removeEventListener('pointerdown', startAudio);
+                         document.body.removeEventListener('touchstart', startAudio);
+                     });
                  };
-                 document.body.addEventListener('pointerdown', startAudio, { once: true }); document.body.addEventListener('touchstart', startAudio, { once: true });
+                 // Add listeners for the first interaction
+                 document.body.addEventListener('pointerdown', startAudio, { once: true });
+                 document.body.addEventListener('touchstart', startAudio, { once: true });
+            } else if (audioInitialized && typeof Tone !== 'undefined' && Tone.Master) {
+                 // If already initialized, just ensure mute state is correct
+                 Tone.Master.mute = isMuted;
             }
         }
 
+
         // Plays the piece snap sound
         function playSnapSound() {
-            if (snapSynth && Tone.context.state === 'running') {
-                try { snapSynth.triggerAttackRelease("C5", "8n", Tone.now()); } catch (error) { console.error("Error playing snap sound:", error); }
-            } else { console.warn("Snap sound: Audio context not running or synth not initialized."); }
+            if (!snapSynth) { console.warn("Snap sound: Synth not initialized."); return; }
+            if (Tone.context.state !== 'running') { console.warn("Snap sound: Audio context not running."); return; }
+            try { snapSynth.triggerAttackRelease("C5", "8n", Tone.now()); } catch (error) { console.error("Error playing snap sound:", error); }
         }
 
         // Plays the applause sound using setTimeout and single NoiseSynth triggers
         function playApplauseSound() {
-            if (!clapVoice) { console.error("Cannot play applause: ClapVoice (NoiseSynth) failed to initialize or not ready."); return; }
+            if (!clapVoice) { console.error("Cannot play applause: ClapVoice (NoiseSynth) not initialized."); return; }
             if (Tone.context.state !== 'running') { console.warn("Applause sound: Audio context not running."); return; }
 
-            const numberOfClaps = 64; // Increased clap count
+            const numberOfClaps = 64;
             const timeSpreadMs = 800;
-            const clapDuration = 0.001 + 0.1 + 0.1 + 0.1; // attack + decay + sustain + release
+            // Duration for NoiseSynth triggerAttackRelease is just the length of the sound
+            const clapDuration = 0.15; // Keep it short and percussive
 
             console.log("Attempting to play applause using single NoiseSynth with setTimeout...");
             try {
                 for (let i = 0; i < numberOfClaps; i++) {
                     const randomOffsetMs = Math.random() * timeSpreadMs;
+                    // Use velocity variation (optional, but adds realism)
+                    const randomVelocity = 0.3 + Math.random() * 0.7;
+
                     setTimeout(() => {
                         if (clapVoice && Tone.context.state === 'running') {
                             try {
-                                clapVoice.triggerAttackRelease(clapDuration);
+                                // Trigger the single NoiseSynth instance
+                                // Velocity parameter works with triggerAttackRelease for NoiseSynth
+                                clapVoice.triggerAttackRelease(clapDuration, `+${randomOffsetMs / 1000}`, randomVelocity);
                             } catch (triggerError) {
                                  console.error(`Error triggering clap inside setTimeout:`, triggerError);
                             }
                         }
-                    }, randomOffsetMs);
+                    }, 0); // Schedule immediately relative to loop, Tone handles the internal timing offset
+                                       // Using setTimeout(..., 0) just defers execution slightly, might help avoid blocking
+                                       // The actual timing is handled by the second argument to triggerAttackRelease: `+${randomOffsetMs / 1000}`
+                                       // This tells Tone.js to play it 'randomOffsetMs / 1000' seconds from Tone.now()
                 }
-                console.log("Applause setTimeout loop finished scheduling.");
+                console.log("Applause trigger loop finished.");
             } catch (error) {
                 console.error("Error in playApplauseSound scheduling loop:", error);
             }
         }
 
+
+        // --- Mute Toggle ---
+        function toggleMute() {
+            if (typeof Tone === 'undefined') return;
+            isMuted = !isMuted;
+            if (Tone.Master) { Tone.Master.mute = isMuted; }
+            else { console.warn("Tone.Master not available to set mute state."); }
+            muteIcon.src = isMuted ? iconVolumeOff : iconVolumeOn;
+            muteButton.setAttribute('aria-label', isMuted ? 'Unmute Sounds' : 'Mute Sounds');
+            console.log("Mute toggled:", isMuted);
+        }
+
         // --- Image Loading ---
         function loadImage(url, callback) {
             console.log("Attempting to load image:", url);
-            loadErrorMessage.textContent = '';
-            loadingMessage.style.opacity = '1';
-            loadingMessage.style.pointerEvents = 'auto';
-
+            loadErrorMessage.textContent = ''; loadingMessage.style.opacity = '1'; loadingMessage.style.pointerEvents = 'auto';
             const img = new Image();
-            // No crossOrigin attribute needed for same-origin or properly configured CORS URLs
-
-            img.onload = () => {
-                console.log("Image loaded successfully:", url);
-                loadingMessage.style.opacity = '0';
-                loadingMessage.style.pointerEvents = 'none';
-                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                     console.error("Image loaded but has zero dimensions:", url);
-                     loadErrorMessage.textContent = "Image seems invalid (zero size).";
-                     callback(null);
-                } else {
-                    currentImageUrl = url;
-                    callback(img);
-                }
-            };
-
-            img.onerror = (event) => {
-                console.error("Error loading image:", url, event);
-                loadingMessage.style.opacity = '0';
-                loadingMessage.style.pointerEvents = 'none';
-                if (url.startsWith("file:") || (!url.startsWith("http:") && !url.startsWith("https:") && !url.startsWith("blob:") && !url.startsWith("data:"))) {
-                     loadErrorMessage.textContent = "Error: Cannot load local images. Please run from a web server.";
-                } else {
-                     loadErrorMessage.textContent = "Failed to load image. Check URL/path & server settings (CORS?).";
-                }
-                callback(null);
-            };
-
+            img.onload = () => { console.log("Image loaded successfully:", url); loadingMessage.style.opacity = '0'; loadingMessage.style.pointerEvents = 'none'; if (img.naturalWidth === 0 || img.naturalHeight === 0) { console.error("Image loaded but has zero dimensions:", url); loadErrorMessage.textContent = "Image seems invalid (zero size)."; callback(null); } else { currentImageUrl = url; callback(img); } };
+            img.onerror = (event) => { console.error("Error loading image:", url, event); loadingMessage.style.opacity = '0'; loadingMessage.style.pointerEvents = 'none'; if (url.startsWith("file:") || (!url.startsWith("http:") && !url.startsWith("https:") && !url.startsWith("blob:") && !url.startsWith("data:"))) { loadErrorMessage.textContent = "Error: Cannot load local images directly. Please use a web server."; } else { loadErrorMessage.textContent = "Failed to load image. Check URL/path & server settings (CORS?)."; } callback(null); };
             img.src = url;
         }
 
-
         // --- Setup Board and Pieces ---
         function setupBoardAndPieces(loadedImage) {
-            if (!loadedImage) {
-                 puzzleBoard.innerHTML = `<p class="text-red-600 p-4">${loadErrorMessage.textContent || "Select an image to start."}</p>`;
-                 piecesContainer.innerHTML = '';
-                return;
-            }
+            if (!loadedImage) { puzzleBoard.innerHTML = `<p class="text-red-600 p-4">${loadErrorMessage.textContent || "Select an image to start."}</p>`; piecesContainer.innerHTML = ''; return; }
             currentGridSize = parseInt(gridSizeSelect.value, 10);
             console.log(`Setting up puzzle with grid size: ${currentGridSize}x${currentGridSize}`);
             imageWidth = loadedImage.naturalWidth; imageHeight = loadedImage.naturalHeight;
@@ -330,8 +377,8 @@
         function shuffleAndPlacePieces() { const shuffledPieces = [...pieces].sort(() => Math.random() - 0.5); const containerRect = piecesContainer.getBoundingClientRect(); if (containerRect.width === 0 || containerRect.height === 0 || !boardWidth) { console.warn("Container/board dimensions not ready for shuffling."); requestAnimationFrame(shuffleAndPlacePieces); return; } const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; shuffledPieces.forEach(piece => { const pieceW = piece.offsetWidth || scaledPieceWidth; const pieceH = piece.offsetHeight || scaledPieceHeight; const maxPosX = containerRect.width - pieceW; const maxPosY = containerRect.height - pieceH; const randomX = Math.max(5, Math.random() * (maxPosX - 10)); const randomY = Math.max(5, Math.random() * (maxPosY - 10)); piece.style.left = `${randomX}px`; piece.style.top = `${randomY}px`; piece.style.position = 'absolute'; piecesContainer.appendChild(piece); }); }
 
         // --- Drag and Drop Handlers ---
-        // Mouse Drag Handlers
-        function handleDragStart(e) { if (e.target.classList.contains('glow')) { e.preventDefault(); return; } draggedPiece = e.target; offsetX = e.offsetX; offsetY = e.offsetY; e.dataTransfer.setData('text/plain', draggedPiece.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => { if(draggedPiece) draggedPiece.style.opacity = '0.7'; }, 0); }
+        let offsetX = 0; let offsetY = 0;
+        function handleDragStart(e) { if (e.target.classList.contains('glow')) { e.preventDefault(); return; } draggedPiece = e.target; offsetX = e.offsetX; offsetY = e.offsetY; try { e.dataTransfer.setData('text/plain', draggedPiece.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) { console.warn("Could not set drag data", err); } setTimeout(() => { if(draggedPiece) draggedPiece.style.opacity = '0.7'; }, 0); }
         function handleDragEnd(e) { if (draggedPiece) { if (draggedPiece.parentElement !== puzzleBoard) { draggedPiece.style.opacity = '1'; } draggedPiece = null; } }
         function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
         function handleDrop(e) {
@@ -339,164 +386,37 @@
             if (distance <= snap_tolerance) {
                 const pieceElement = droppedPiece;
                 pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.style.opacity = '1'; pieceElement.draggable = false; pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
+                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
                 correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success
+                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); }
                 else { playSnapSound(); }
              } else { if(droppedPiece) droppedPiece.style.opacity = '1'; }
              draggedPiece = null;
         }
 
         // --- Touch Event Handlers (Optimized) ---
-        function handleTouchStart(e) {
-             if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return;
-             e.preventDefault(); // Prevent scroll/zoom only when starting drag on a piece
-
-             draggedPiece = e.target; // Use the same draggedPiece variable
-             const touch = e.touches[0];
-
-             // Calculate initial offset relative to the piece itself
-             const rect = draggedPiece.getBoundingClientRect();
-             touchOffsetX = touch.clientX - rect.left;
-             touchOffsetY = touch.clientY - rect.top;
-
-             // Store initial position relative to viewport for transform calculation
-             initialX = rect.left;
-             initialY = rect.top;
-             currentX = initialX;
-             currentY = initialY;
-
-             // Style for dragging state (using transform for positioning)
-             draggedPiece.classList.add('dragging');
-             draggedPiece.style.position = 'fixed'; // Use fixed during drag for viewport relative positioning
-             draggedPiece.style.left = `${initialX}px`; // Set initial fixed position
-             draggedPiece.style.top = `${initialY}px`;
-             draggedPiece.style.transform = 'scale(1.05)'; // Apply scale immediately
-
-             isDragging = true;
-             // Start the animation frame loop if not already running
-             if (!touchMoveRafId) {
-                 touchMoveRafId = requestAnimationFrame(updateTouchDragPosition);
-             }
-             console.log(`Touch start on piece: ${draggedPiece.id}`);
-        }
-
-        function handleTouchMove(e) {
-             if (!isDragging || !draggedPiece) return;
-             e.preventDefault(); // Prevent scrolling while dragging
-
-             const touch = e.touches[0];
-             // Update current position based on touch movement and initial offset
-             currentX = touch.clientX - touchOffsetX;
-             currentY = touch.clientY - touchOffsetY;
-             // Position update will happen in updateTouchDragPosition via rAF
-        }
-
-        // Function called by requestAnimationFrame to update position smoothly
-        function updateTouchDragPosition() {
-            if (!isDragging || !draggedPiece) {
-                touchMoveRafId = null; // Stop the loop if dragging stopped
-                return;
-            }
-            // Apply the latest position using transform
-            draggedPiece.style.left = `${currentX}px`;
-            draggedPiece.style.top = `${currentY}px`;
-
-            // Request the next frame
-            touchMoveRafId = requestAnimationFrame(updateTouchDragPosition);
-        }
-
-
+        function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); draggedPiece = e.target; const touch = e.touches[0]; const rect = draggedPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; initialX = rect.left; initialY = rect.top; currentX = initialX; currentY = initialY; draggedPiece.classList.add('dragging'); draggedPiece.style.position = 'fixed'; draggedPiece.style.left = `${initialX}px`; draggedPiece.style.top = `${initialY}px`; draggedPiece.style.transform = 'scale(1.05)'; isDragging = true; if (!touchMoveRafId) { touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); } /*console.log(`Touch start on piece: ${draggedPiece.id}`);*/ }
+        function handleTouchMove(e) { if (!isDragging || !draggedPiece) return; e.preventDefault(); const touch = e.touches[0]; currentX = touch.clientX - touchOffsetX; currentY = touch.clientY - touchOffsetY; }
+        function updateTouchDragPosition() { if (!isDragging || !draggedPiece) { touchMoveRafId = null; return; } draggedPiece.style.left = `${currentX}px`; draggedPiece.style.top = `${currentY}px`; touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); }
         function handleTouchEnd(e) {
-             if (!isDragging || !draggedPiece) return;
-
-             // Cancel the animation frame loop
-             if (touchMoveRafId) {
-                 cancelAnimationFrame(touchMoveRafId);
-                 touchMoveRafId = null;
-             }
-             isDragging = false;
-             const pieceElement = draggedPiece; // Keep reference
-
-             // Restore styles immediately, position will be set on snap or snap back
-             pieceElement.classList.remove('dragging');
-             pieceElement.style.transform = 'scale(1)'; // Reset scale
-             pieceElement.style.opacity = '1'; // Reset opacity
-
-             console.log(`Touch end for piece: ${pieceElement.id}`);
-
-             const touch = e.changedTouches[0];
-             const boardRect = puzzleBoard.getBoundingClientRect();
-
-             // Calculate the center of the piece at the final touch position (relative to viewport)
-             const pieceRect = pieceElement.getBoundingClientRect(); // Get final rect after drag
-             const pieceCenterX = pieceRect.left + pieceRect.width / 2;
-             const pieceCenterY = pieceRect.top + pieceRect.height / 2;
-
-             // Check if the drop point (center of the piece) is over the board
-             if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right &&
-                 pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
-
-                 // Calculate drop position relative to the puzzle board's top-left
-                 const dropX = pieceCenterX - boardRect.left;
-                 const dropY = pieceCenterY - boardRect.top;
-
-                 const correctX = parseFloat(pieceElement.dataset.correctX);
-                 const correctY = parseFloat(pieceElement.dataset.correctY);
-                 const scaledPieceWidth = boardWidth / currentGridSize;
-                 const scaledPieceHeight = boardHeight / currentGridSize;
-                 const targetCenterX = correctX + scaledPieceWidth / 2;
-                 const targetCenterY = correctY + scaledPieceHeight / 2;
-                 const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
-
-                 if (distance <= snap_tolerance) {
-                     console.log("Snapping piece (touch)!");
-                     // Snap the piece into place (relative to board)
-                     pieceElement.style.position = 'absolute'; // Back to absolute
-                     pieceElement.style.left = `${correctX}px`;
-                     pieceElement.style.top = `${correctY}px`;
-                     pieceElement.draggable = false;
-                     pieceElement.removeEventListener('touchstart', handleTouchStart);
-                     pieceElement.removeEventListener('touchmove', handleTouchMove);
-                     pieceElement.removeEventListener('touchend', handleTouchEnd);
-                     pieceElement.classList.add('glow');
-                     pieceElement.style.cursor = 'default';
-                     puzzleBoard.appendChild(pieceElement); // Move to board
-
-                     setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
-
-                     correctlyPlacedCount++;
-                     console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-
-                     if (correctlyPlacedCount === currentGridSize * currentGridSize) {
-                         console.log("Puzzle Solved!");
-                         playApplauseSound();
-                         setTimeout(showSuccessMessage, 1000); // Delayed success
-                     } else {
-                         playSnapSound(); // Play snap only if not complete
-                     }
-                 } else {
-                     console.log("Touch dropped too far from correct spot.");
-                     snapPieceBack(pieceElement); // Snap back to pieces container
-                 }
-             } else {
-                 console.log("Touch dropped outside board.");
-                 snapPieceBack(pieceElement); // Snap back to pieces container
-             }
-             draggedPiece = null; // Clear reference
+            if (!isDragging || !draggedPiece) return;
+            if (touchMoveRafId) { cancelAnimationFrame(touchMoveRafId); touchMoveRafId = null; }
+            isDragging = false; const pieceElement = draggedPiece;
+            pieceElement.classList.remove('dragging'); pieceElement.style.transform = 'scale(1)'; pieceElement.style.opacity = '1'; /*console.log(`Touch end for piece: ${pieceElement.id}`);*/
+            const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceRect = pieceElement.getBoundingClientRect(); const pieceCenterX = pieceRect.left + pieceRect.width / 2; const pieceCenterY = pieceRect.top + pieceRect.height / 2;
+            if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right && pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
+                const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
+                if (distance <= snap_tolerance) {
+                    pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.draggable = false; pieceElement.removeEventListener('touchstart', handleTouchStart); pieceElement.removeEventListener('touchmove', handleTouchMove); pieceElement.removeEventListener('touchend', handleTouchEnd); pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
+                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
+                    correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
+                    if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); }
+                    else { playSnapSound(); }
+                } else { snapPieceBack(pieceElement); }
+            } else { snapPieceBack(pieceElement); }
+            draggedPiece = null;
         }
-
-        function snapPieceBack(piece) {
-             // Reset styles before appending back
-             piece.style.position = 'absolute';
-             piece.style.transform = ''; // Clear transform if any lingering scale
-             piecesContainer.appendChild(piece);
-             const containerRect = piecesContainer.getBoundingClientRect();
-             const pieceW = piece.offsetWidth || (boardWidth / currentGridSize);
-             const pieceH = piece.offsetHeight || (boardHeight / currentGridSize);
-             const containerW = containerRect.width; const containerH = containerRect.height;
-             if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; }
-        }
+        function snapPieceBack(piece) { piece.style.position = 'absolute'; piece.style.transform = ''; piecesContainer.appendChild(piece); const containerRect = piecesContainer.getBoundingClientRect(); const pieceW = piece.offsetWidth || (boardWidth / currentGridSize); const pieceH = piece.offsetHeight || (boardHeight / currentGridSize); const containerW = containerRect.width; const containerH = containerRect.height; if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; } }
 
         // --- Success ---
         function showSuccessMessage() { successMessage.style.opacity = '1'; successMessage.style.pointerEvents = 'auto'; }
@@ -508,37 +428,17 @@
 
 
         // --- Populate UI Controls ---
-        function populateImageSelector() {
-            imageSelectorContainer.innerHTML = ''; // Clear existing buttons
-            availableImages.forEach((imgData, index) => {
-                const button = document.createElement('button');
-                button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100', 'flex', 'flex-col', 'items-center', 'w-20'); // Fixed width for buttons
-                button.dataset.imagePath = imgData.path;
-                button.innerHTML = `
-                    <span class="text-3xl">${imgData.emoji}</span>
-                    <span class="block text-xs mt-1 truncate">${imgData.name}</span>
-                `;
-                button.addEventListener('click', () => {
-                    document.querySelectorAll('.image-select-button').forEach(btn => btn.classList.remove('selected'));
-                    button.classList.add('selected');
-                    loadImage(imgData.path, setupBoardAndPieces);
-                });
-                imageSelectorContainer.appendChild(button);
-                if (index === 0) { button.classList.add('selected'); } // Select first one initially
-            });
-        }
-
-        function populateGridSizeSelector() {
-            for (let size = 2; size <= 16; size++) { const option = document.createElement('option'); option.value = size; option.textContent = `${size} x ${size}`; if (size === defaultGridSize) { option.selected = true; } gridSizeSelect.appendChild(option); }
-            gridSizeSelect.addEventListener('change', (event) => { loadImage(currentImageUrl, setupBoardAndPieces); });
-        }
+        function populateImageSelector() { imageSelectorContainer.innerHTML = ''; availableImages.forEach((imgData, index) => { const button = document.createElement('button'); button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100', 'flex', 'flex-col', 'items-center', 'w-20', 'h-20', 'justify-between'); button.dataset.imagePath = imgData.path; button.innerHTML = ` <span class="text-3xl leading-none">${imgData.emoji}</span> <span class="block text-xs mt-1 truncate w-full">${imgData.name}</span> `; button.addEventListener('click', () => { document.querySelectorAll('.image-select-button').forEach(btn => btn.classList.remove('selected')); button.classList.add('selected'); loadImage(imgData.path, setupBoardAndPieces); }); imageSelectorContainer.appendChild(button); if (index === 0) { button.classList.add('selected'); } }); }
+        function populateGridSizeSelector() { gridSizeSelect.innerHTML = ''; for (let size = 2; size <= 16; size++) { const option = document.createElement('option'); option.value = size; option.textContent = `${size} x ${size}`; if (size === currentGridSize) { option.selected = true; } gridSizeSelect.appendChild(option); } }
 
         // --- Initial Game Setup ---
         function initializeGame() {
             populateImageSelector();
             populateGridSizeSelector();
-            currentImageUrl = availableImages[0].path; // Set initial URL from array
-            currentGridSize = defaultGridSize;
+            gridSizeSelect.addEventListener('change', (event) => { loadImage(currentImageUrl, setupBoardAndPieces); });
+            muteButton.addEventListener('click', toggleMute);
+            currentImageUrl = availableImages[0].path;
+            currentGridSize = parseInt(gridSizeSelect.value, 10);
             loadImage(currentImageUrl, setupBoardAndPieces); // Start loading default image
         }
 
