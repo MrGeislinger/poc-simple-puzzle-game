@@ -144,7 +144,6 @@
             <div class="flex items-center">
                  <label for="mute-button" class="text-sm font-medium text-gray-700 mr-2">Sound:</label>
                  <button id="mute-button" type="button" class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" aria-label="Mute Sounds"> 
-                     
                      <img id="mute-icon" src="https://unpkg.com/lucide-static@latest/icons/volume-x.svg" alt="Mute/Unmute" class="w-5 h-5 text-gray-600"> 
                  </button>
             </div>
@@ -161,8 +160,12 @@
         </div>
         <div class="bg-white p-4 rounded-lg shadow-md order-1 md:order-2">
              <h2 class="text-lg font-semibold text-gray-600 mb-4 text-center">Place Pieces Here</h2>
-            <div id="puzzle-board" class="relative border-2 border-dashed border-gray-400 rounded-md aspect-square max-w-full mx-auto">
-                </div>
+             
+             <div id="puzzle-board-container" class="w-full"> 
+                 <div id="puzzle-board" class="relative border-2 border-dashed border-gray-400 rounded-md aspect-square max-w-full mx-auto">
+                     
+                 </div>
+             </div>
          </div>
     </div>
 
@@ -178,13 +181,14 @@
         // --- Configuration ---
         const defaultGridSize = 3;
         const snap_tolerance = 35;
+        const CLAP_VOICE_POOL_SIZE = 8; // Keep pool for potential future use if needed
 
         // --- Available Images ---
         const availableImages = [
-            { name: "Unicorn", path: "https://t4.ftcdn.net/jpg/10/35/40/59/360_F_1035405936_qI2uP0IG1ZUzijmz4tlU1i2Da7fzIBtY.jpg", emoji: "🦄" },
+            { name: "Unicorn", path: "images/unicorn.png", emoji: "🦄" },
             { name: "Kitten", path: "images/kitten.png", emoji: "🐱" },
             { name: "Puppy", path: "images/puppy.png", emoji: "🐶" },
-            { name: "Landscape", path: "images/landscape.jpg", emoji: "🏞️" }
+            { name: "Landscape", path: "images/landscape.png", emoji: "🏞️" }
         ];
 
         // --- Icon URLs ---
@@ -194,6 +198,7 @@
         // --- Elements ---
         const piecesContainer = document.getElementById('pieces-container');
         const puzzleBoard = document.getElementById('puzzle-board');
+        const puzzleBoardContainer = document.getElementById('puzzle-board-container'); // Container for width check
         const successMessage = document.getElementById('success-message');
         const loadingMessage = document.getElementById('loading-message');
         const imageSelectorContainer = document.getElementById('image-selector-container');
@@ -210,13 +215,18 @@
         let boardWidth, boardHeight;
         let correctlyPlacedCount = 0;
         let snapSynth = null;
-        let clapVoice = null;
+        let clapVoice = null; // Single NoiseSynth instance for applause
         let isMuted = true; // Start muted by default
-        let isDragging = false;
-        let draggedPiece = null;
-        let touchMoveRafId = null;
-        let currentX = 0; let currentY = 0; let initialX = 0; let initialY = 0; let touchOffsetX = 0; let touchOffsetY = 0;
         let audioInitialized = false;
+        let lastBoardContainerWidth = 0; // Store last width for resize check
+
+        // --- Drag & Touch State ---
+        let isDragging = false;
+        let currentDraggedPiece = null;
+        let dragOffsetX = 0; let dragOffsetY = 0;
+        let touchOffsetX = 0; let touchOffsetY = 0;
+        let touchMoveRafId = null;
+        let currentX = 0; let currentY = 0;
 
         // --- Sound Initialization ---
         function initializeSound() {
@@ -227,17 +237,7 @@
                          console.log("Audio Context started by user interaction.");
                          let snapSuccess = false, clapSuccess = false;
                          if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); snapSuccess = true; } catch (e) { console.error("Error initializing SnapSynth:", e); } } else { snapSuccess = true; }
-                         if (!clapVoice) {
-                             try {
-                                 clapVoice = new Tone.NoiseSynth({
-                                     noise: { type: 'pink' },
-                                     envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, // Sustain added
-                                     volume: -12
-                                 }).toDestination();
-                                 console.log("ClapVoice (NoiseSynth) initialized.");
-                                 clapSuccess = true;
-                             } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); }
-                         } else { clapSuccess = true; }
+                         if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); clapSuccess = true; } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } } else { clapSuccess = true; }
                          audioInitialized = snapSuccess && clapSuccess;
                          if (audioInitialized) { Tone.Master.mute = isMuted; console.log("Audio initialization complete."); }
                          else { console.error("Audio initialization failed for one or more synths."); }
@@ -246,7 +246,7 @@
                  };
                  document.body.addEventListener('pointerdown', startAudio, { once: true }); document.body.addEventListener('touchstart', startAudio, { once: true });
             } else if (audioInitialized && typeof Tone !== 'undefined' && Tone.Master) {
-                 Tone.Master.mute = isMuted; // Apply mute state if already initialized
+                 Tone.Master.mute = isMuted;
             }
         }
 
@@ -254,7 +254,6 @@
         function playSnapSound() {
             if (!snapSynth) { console.warn("Snap sound: Synth not initialized."); return; }
             if (Tone.context.state !== 'running') { console.warn("Snap sound: Audio context not running."); return; }
-            // Check isMuted flag before playing (optional, Tone.Master handles it but good practice)
             if (isMuted) return;
             try { snapSynth.triggerAttackRelease("C5", "8n", Tone.now()); } catch (error) { console.error("Error playing snap sound:", error); }
         }
@@ -263,19 +262,18 @@
         function playApplauseSound() {
             if (!clapVoice) { console.error("Cannot play applause: ClapVoice (NoiseSynth) not initialized."); return; }
             if (Tone.context.state !== 'running') { console.warn("Applause sound: Audio context not running."); return; }
-            // Check isMuted flag before playing
             if (isMuted) return;
 
-            const numberOfClaps = 64; // Increased clap count
+            const numberOfClaps = 64; // Updated clap count
             const timeSpreadMs = 800;
-            const clapDuration = 0.20; // Adjusted slightly for sustain: attack+decay+sustain+release = 0.001 + 0.1 + 0.1 + 0.1 = 0.301. Let's use a slightly shorter trigger like 0.2
+            const clapDuration = 0.18; // Adjusted duration
 
             console.log("Attempting to play applause using single NoiseSynth with setTimeout...");
             try {
                 for (let i = 0; i < numberOfClaps; i++) {
                     const randomOffsetMs = Math.random() * timeSpreadMs;
                     setTimeout(() => {
-                        if (clapVoice && Tone.context.state === 'running' && !isMuted) { // Check mute again inside timeout
+                        if (clapVoice && Tone.context.state === 'running' && !isMuted) {
                             try {
                                 clapVoice.triggerAttackRelease(clapDuration);
                             } catch (triggerError) {
@@ -297,7 +295,6 @@
             isMuted = !isMuted;
             if (Tone.Master) { Tone.Master.mute = isMuted; }
             else { console.warn("Tone.Master not available to set mute state."); }
-            // Update icon based on the new state
             muteIcon.src = isMuted ? iconVolumeOff : iconVolumeOn;
             muteButton.setAttribute('aria-label', isMuted ? 'Unmute Sounds' : 'Mute Sounds');
             console.log("Mute toggled:", isMuted);
@@ -319,9 +316,16 @@
             currentGridSize = parseInt(gridSizeSelect.value, 10);
             console.log(`Setting up puzzle with grid size: ${currentGridSize}x${currentGridSize}`);
             imageWidth = loadedImage.naturalWidth; imageHeight = loadedImage.naturalHeight;
-            const boardContainerWidth = puzzleBoard.offsetWidth;
+            
+            // Use the container for width calculation to be consistent with resize handler
+            const boardContainerWidth = puzzleBoardContainer.offsetWidth; 
+            
             if (boardContainerWidth === 0) { console.warn("Board container not ready yet, delaying setup."); requestAnimationFrame(() => setupBoardAndPieces(loadedImage)); return; }
             const aspectRatio = imageWidth / imageHeight; boardWidth = boardContainerWidth; boardHeight = boardWidth / aspectRatio; puzzleBoard.style.height = `${boardHeight}px`; puzzleBoard.style.width = `${boardWidth}px`; puzzleBoard.style.setProperty('--puzzle-background-image', `url(${currentImageUrl})`);
+            
+            // Store the width used for setup for resize comparison
+            lastBoardContainerWidth = boardContainerWidth; 
+
             const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const totalPieces = currentGridSize * currentGridSize;
             console.log(`Board dimensions: ${boardWidth}x${boardHeight}`); console.log(`Scaled piece dimensions: ${scaledPieceWidth}x${scaledPieceHeight}`);
             pieces = []; puzzleBoard.innerHTML = ''; piecesContainer.innerHTML = ''; correctlyPlacedCount = 0;
@@ -333,46 +337,40 @@
         function shuffleAndPlacePieces() { const shuffledPieces = [...pieces].sort(() => Math.random() - 0.5); const containerRect = piecesContainer.getBoundingClientRect(); if (containerRect.width === 0 || containerRect.height === 0 || !boardWidth) { console.warn("Container/board dimensions not ready for shuffling."); requestAnimationFrame(shuffleAndPlacePieces); return; } const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; shuffledPieces.forEach(piece => { const pieceW = piece.offsetWidth || scaledPieceWidth; const pieceH = piece.offsetHeight || scaledPieceHeight; const maxPosX = containerRect.width - pieceW; const maxPosY = containerRect.height - pieceH; const randomX = Math.max(5, Math.random() * (maxPosX - 10)); const randomY = Math.max(5, Math.random() * (maxPosY - 10)); piece.style.left = `${randomX}px`; piece.style.top = `${randomY}px`; piece.style.position = 'absolute'; piecesContainer.appendChild(piece); }); }
 
         // --- Drag and Drop Handlers ---
-        let offsetX = 0; let offsetY = 0;
-        function handleDragStart(e) { if (e.target.classList.contains('glow')) { e.preventDefault(); return; } draggedPiece = e.target; offsetX = e.offsetX; offsetY = e.offsetY; try { e.dataTransfer.setData('text/plain', draggedPiece.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) { console.warn("Could not set drag data", err); } setTimeout(() => { if(draggedPiece) draggedPiece.style.opacity = '0.7'; }, 0); }
-        function handleDragEnd(e) { if (draggedPiece) { if (draggedPiece.parentElement !== puzzleBoard) { draggedPiece.style.opacity = '1'; } draggedPiece = null; } }
+        function handleDragStart(e) { const pieceElement = e.target.closest('.puzzle-piece'); if (!pieceElement || pieceElement.classList.contains('glow')) { e.preventDefault(); return; } currentDraggedPiece = pieceElement; dragOffsetX = e.offsetX; dragOffsetY = e.offsetY; try { e.dataTransfer.setData('text/plain', currentDraggedPiece.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) { console.warn("Could not set drag data", err); } setTimeout(() => { if(currentDraggedPiece) currentDraggedPiece.style.opacity = '0.7'; }, 0); }
+        function handleDragEnd(e) { if (currentDraggedPiece) { if (currentDraggedPiece.parentElement !== puzzleBoard) { currentDraggedPiece.style.opacity = '1'; } currentDraggedPiece = null; } }
         function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
         function handleDrop(e) {
-            e.preventDefault(); const pieceId = e.dataTransfer.getData('text/plain'); const droppedPiece = document.getElementById(pieceId); if (!droppedPiece || droppedPiece.parentElement === puzzleBoard) return; const boardRect = puzzleBoard.getBoundingClientRect(); const dropX = e.clientX - boardRect.left; const dropY = e.clientY - boardRect.top; const correctX = parseFloat(droppedPiece.dataset.correctX); const correctY = parseFloat(droppedPiece.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const pieceDropCenterX = dropX - offsetX + scaledPieceWidth / 2; const pieceDropCenterY = dropY - offsetY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(pieceDropCenterX - targetCenterX, 2) + Math.pow(pieceDropCenterY - targetCenterY, 2) );
+            e.preventDefault(); const pieceId = e.dataTransfer.getData('text/plain'); const pieceElement = document.getElementById(pieceId); if (!pieceElement || pieceElement.parentElement === puzzleBoard) return; currentDraggedPiece = null; const boardRect = puzzleBoard.getBoundingClientRect(); const dropX = e.clientX - boardRect.left; const dropY = e.clientY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const pieceDropCenterX = dropX - dragOffsetX + scaledPieceWidth / 2; const pieceDropCenterY = dropY - dragOffsetY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(pieceDropCenterX - targetCenterX, 2) + Math.pow(pieceDropCenterY - targetCenterY, 2) );
             if (distance <= snap_tolerance) {
-                const pieceElement = droppedPiece;
                 pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.style.opacity = '1'; pieceElement.draggable = false; pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                // Remove glow after delay
-                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
+                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow after 0.5s
                 correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success
+                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success message (1s)
                 else { playSnapSound(); } // Play snap only if not complete
-             } else { if(droppedPiece) droppedPiece.style.opacity = '1'; }
-             draggedPiece = null;
+             } else { pieceElement.style.opacity = '1'; }
         }
 
         // --- Touch Event Handlers (Optimized) ---
-        function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); draggedPiece = e.target; const touch = e.touches[0]; const rect = draggedPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; initialX = rect.left; initialY = rect.top; currentX = initialX; currentY = initialY; draggedPiece.classList.add('dragging'); draggedPiece.style.position = 'fixed'; draggedPiece.style.left = `${initialX}px`; draggedPiece.style.top = `${initialY}px`; draggedPiece.style.transform = 'scale(1.05)'; isDragging = true; if (!touchMoveRafId) { touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); } }
-        function handleTouchMove(e) { if (!isDragging || !draggedPiece) return; e.preventDefault(); const touch = e.touches[0]; currentX = touch.clientX - touchOffsetX; currentY = touch.clientY - touchOffsetY; }
-        function updateTouchDragPosition() { if (!isDragging || !draggedPiece) { touchMoveRafId = null; return; } draggedPiece.style.left = `${currentX}px`; draggedPiece.style.top = `${currentY}px`; touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); }
+        function handleTouchStart(e) { const targetPiece = e.target.closest('.puzzle-piece'); if (!targetPiece || targetPiece.classList.contains('glow')) return; e.preventDefault(); currentDraggedPiece = targetPiece; const touch = e.touches[0]; const rect = currentDraggedPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; initialX = rect.left; initialY = rect.top; currentX = initialX; currentY = initialY; currentDraggedPiece.classList.add('dragging'); currentDraggedPiece.style.position = 'fixed'; currentDraggedPiece.style.left = `${initialX}px`; currentDraggedPiece.style.top = `${initialY}px`; currentDraggedPiece.style.transform = 'scale(1.05)'; isDragging = true; if (!touchMoveRafId) { touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); } }
+        function handleTouchMove(e) { if (!isDragging || !currentDraggedPiece) return; e.preventDefault(); const touch = e.touches[0]; currentX = touch.clientX - touchOffsetX; currentY = touch.clientY - touchOffsetY; }
+        function updateTouchDragPosition() { if (!isDragging || !currentDraggedPiece) { touchMoveRafId = null; return; } currentDraggedPiece.style.left = `${currentX}px`; currentDraggedPiece.style.top = `${currentY}px`; touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); }
         function handleTouchEnd(e) {
-            if (!isDragging || !draggedPiece) return;
+            if (!isDragging || !currentDraggedPiece) return;
             if (touchMoveRafId) { cancelAnimationFrame(touchMoveRafId); touchMoveRafId = null; }
-            isDragging = false; const pieceElement = draggedPiece;
+            isDragging = false; const pieceElement = currentDraggedPiece; currentDraggedPiece = null;
             pieceElement.classList.remove('dragging'); pieceElement.style.transform = 'scale(1)'; pieceElement.style.opacity = '1';
             const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceRect = pieceElement.getBoundingClientRect(); const pieceCenterX = pieceRect.left + pieceRect.width / 2; const pieceCenterY = pieceRect.top + pieceRect.height / 2;
             if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right && pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
                 const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
                 if (distance <= snap_tolerance) {
                     pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.draggable = false; pieceElement.removeEventListener('touchstart', handleTouchStart); pieceElement.removeEventListener('touchmove', handleTouchMove); pieceElement.removeEventListener('touchend', handleTouchEnd); pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
+                    setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
                     correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                    if (correctlyPlacedCount === currentGridSize * currentGridSize) {
-                        console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); // Delayed success
-                    } else { playSnapSound(); } // Play snap only if not complete
+                    if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success
+                    else { playSnapSound(); }
                 } else { snapPieceBack(pieceElement); }
             } else { snapPieceBack(pieceElement); }
-            draggedPiece = null;
         }
         function snapPieceBack(piece) { piece.style.position = 'absolute'; piece.style.transform = ''; piecesContainer.appendChild(piece); const containerRect = piecesContainer.getBoundingClientRect(); const pieceW = piece.offsetWidth || (boardWidth / currentGridSize); const pieceH = piece.offsetHeight || (boardHeight / currentGridSize); const containerW = containerRect.width; const containerH = containerRect.height; if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; } }
 
@@ -381,13 +379,26 @@
 
         // --- Resize Handling ---
         function debounce(func, wait) { let timeout; return function executedFunction(...args) { const later = () => { clearTimeout(timeout); func(...args); }; clearTimeout(timeout); timeout = setTimeout(later, wait); }; }
-        const handleResize = debounce(() => { console.log("Window resized, recalculating layout..."); if(currentImageUrl && imageWidth && imageHeight) { loadImage(currentImageUrl, setupBoardAndPieces); } }, 250);
+        const handleResize = debounce(() => {
+            // Get the current width of the container that determines the puzzle board size
+            const currentBoardContainerWidth = puzzleBoardContainer.offsetWidth;
+            // Only reload if the width has changed significantly (e.g., by more than 2 pixels)
+            if (Math.abs(currentBoardContainerWidth - lastBoardContainerWidth) > 2) {
+                 console.log(`Window resized significantly (width change), recalculating layout... Old: ${lastBoardContainerWidth}, New: ${currentBoardContainerWidth}`);
+                 if(currentImageUrl && imageWidth && imageHeight) {
+                     // Reload the current image; setupBoardAndPieces will update lastBoardContainerWidth
+                     loadImage(currentImageUrl, setupBoardAndPieces);
+                 }
+            } else {
+                // console.log("Resize event ignored (width change insignificant or only height changed).");
+            }
+        }, 250);
         window.addEventListener('resize', handleResize);
 
 
         // --- Populate UI Controls ---
         function populateImageSelector() { imageSelectorContainer.innerHTML = ''; availableImages.forEach((imgData, index) => { const button = document.createElement('button'); button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100', 'flex', 'flex-col', 'items-center', 'w-20', 'h-20', 'justify-between'); button.dataset.imagePath = imgData.path; button.innerHTML = ` <span class="text-3xl leading-none">${imgData.emoji}</span> <span class="block text-xs mt-1 truncate w-full">${imgData.name}</span> `; button.addEventListener('click', () => { document.querySelectorAll('.image-select-button').forEach(btn => btn.classList.remove('selected')); button.classList.add('selected'); loadImage(imgData.path, setupBoardAndPieces); }); imageSelectorContainer.appendChild(button); if (index === 0) { button.classList.add('selected'); } }); }
-        function populateGridSizeSelector() { gridSizeSelect.innerHTML = ''; for (let size = 2; size <= 16; size++) { const option = document.createElement('option'); option.value = size; option.textContent = `${size} x ${size}`; if (size === currentGridSize) { option.selected = true; } gridSizeSelect.appendChild(option); } }
+        function populateGridSizeSelector() { gridSizeSelect.innerHTML = ''; for (let size = 2; size <= 16; size++) { const option = document.createElement('option'); option.value = size; option.textContent = `${size} x ${size}`; if (size == currentGridSize) { option.selected = true; } gridSizeSelect.appendChild(option); } }
 
         // --- Initial Game Setup ---
         function initializeGame() {
@@ -395,10 +406,8 @@
             populateGridSizeSelector();
             gridSizeSelect.addEventListener('change', (event) => { loadImage(currentImageUrl, setupBoardAndPieces); });
             muteButton.addEventListener('click', toggleMute);
-            // Set initial mute button state based on isMuted default
             muteIcon.src = isMuted ? iconVolumeOff : iconVolumeOn;
             muteButton.setAttribute('aria-label', isMuted ? 'Unmute Sounds' : 'Mute Sounds');
-
             currentImageUrl = availableImages[0].path;
             currentGridSize = parseInt(gridSizeSelect.value, 10);
             loadImage(currentImageUrl, setupBoardAndPieces);
