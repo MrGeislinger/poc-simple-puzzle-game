@@ -143,8 +143,9 @@
             </div>
             <div class="flex items-center">
                  <label for="mute-button" class="text-sm font-medium text-gray-700 mr-2">Sound:</label>
-                 <button id="mute-button" type="button" class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" aria-label="Mute/Unmute Sounds">
-                     <img id="mute-icon" src="https://unpkg.com/lucide-static@latest/icons/volume-2.svg" alt="Mute/Unmute" class="w-5 h-5 text-gray-600">
+                 <button id="mute-button" type="button" class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" aria-label="Mute Sounds"> 
+                     
+                     <img id="mute-icon" src="https://unpkg.com/lucide-static@latest/icons/volume-x.svg" alt="Mute/Unmute" class="w-5 h-5 text-gray-600"> 
                  </button>
             </div>
         </div>
@@ -208,92 +209,53 @@
         let imageWidth, imageHeight;
         let boardWidth, boardHeight;
         let correctlyPlacedCount = 0;
-        let snapSynth = null; // Initialize as null
-        let clapVoice = null; // Initialize as null
-        let isMuted = false;
+        let snapSynth = null;
+        let clapVoice = null;
+        let isMuted = true; // Start muted by default
         let isDragging = false;
         let draggedPiece = null;
         let touchMoveRafId = null;
         let currentX = 0; let currentY = 0; let initialX = 0; let initialY = 0; let touchOffsetX = 0; let touchOffsetY = 0;
-        let audioInitialized = false; // Flag to track if audio context is ready AND synths initialized
+        let audioInitialized = false;
 
         // --- Sound Initialization ---
         function initializeSound() {
-            // Only initialize if Tone is available and not already done
             if (!audioInitialized && typeof Tone !== 'undefined') {
                  const startAudio = () => {
-                     // Prevent multiple initializations if already started
-                     if (Tone.context.state === 'running' && audioInitialized) {
-                         document.body.removeEventListener('pointerdown', startAudio);
-                         document.body.removeEventListener('touchstart', startAudio);
-                         return;
-                     }
-
+                     if (Tone.context.state === 'running' && audioInitialized) { document.body.removeEventListener('pointerdown', startAudio); document.body.removeEventListener('touchstart', startAudio); return; }
                      Tone.start().then(() => {
                          console.log("Audio Context started by user interaction.");
-                         let snapSuccess = false;
-                         let clapSuccess = false;
-
-                         // Initialize snap synth
-                         if (!snapSynth) {
-                             try {
-                                 snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination();
-                                 console.log("SnapSynth initialized.");
-                                 snapSuccess = true;
-                             } catch (e) { console.error("Error initializing SnapSynth:", e); }
-                         } else {
-                             snapSuccess = true; // Already existed
-                         }
-
-                         // Initialize SINGLE NoiseSynth for clapping
+                         let snapSuccess = false, clapSuccess = false;
+                         if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); snapSuccess = true; } catch (e) { console.error("Error initializing SnapSynth:", e); } } else { snapSuccess = true; }
                          if (!clapVoice) {
                              try {
                                  clapVoice = new Tone.NoiseSynth({
                                      noise: { type: 'pink' },
-                                     envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 },
+                                     envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, // Sustain added
                                      volume: -12
                                  }).toDestination();
                                  console.log("ClapVoice (NoiseSynth) initialized.");
                                  clapSuccess = true;
-                             } catch (e) {
-                                 console.error("Error initializing ClapVoice (NoiseSynth):", e);
-                             }
-                         } else {
-                            clapSuccess = true; // Already existed
-                         }
-
-                         // Mark audio as initialized only if *both* synths are ready
+                             } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); }
+                         } else { clapSuccess = true; }
                          audioInitialized = snapSuccess && clapSuccess;
-                         if (audioInitialized) {
-                            Tone.Master.mute = isMuted; // Apply mute state
-                            console.log("Audio initialization complete.");
-                         } else {
-                            console.error("Audio initialization failed for one or more synths.");
-                         }
-
-                     }).catch(e => {
-                         console.error("Error starting Tone.js AudioContext:", e);
-                         audioInitialized = false;
-                     }).finally(() => {
-                         // Always remove listeners after the attempt
-                         document.body.removeEventListener('pointerdown', startAudio);
-                         document.body.removeEventListener('touchstart', startAudio);
-                     });
+                         if (audioInitialized) { Tone.Master.mute = isMuted; console.log("Audio initialization complete."); }
+                         else { console.error("Audio initialization failed for one or more synths."); }
+                     }).catch(e => { console.error("Error starting Tone.js AudioContext:", e); audioInitialized = false; })
+                     .finally(() => { document.body.removeEventListener('pointerdown', startAudio); document.body.removeEventListener('touchstart', startAudio); });
                  };
-                 // Add listeners for the first interaction
-                 document.body.addEventListener('pointerdown', startAudio, { once: true });
-                 document.body.addEventListener('touchstart', startAudio, { once: true });
+                 document.body.addEventListener('pointerdown', startAudio, { once: true }); document.body.addEventListener('touchstart', startAudio, { once: true });
             } else if (audioInitialized && typeof Tone !== 'undefined' && Tone.Master) {
-                 // If already initialized, just ensure mute state is correct
-                 Tone.Master.mute = isMuted;
+                 Tone.Master.mute = isMuted; // Apply mute state if already initialized
             }
         }
-
 
         // Plays the piece snap sound
         function playSnapSound() {
             if (!snapSynth) { console.warn("Snap sound: Synth not initialized."); return; }
             if (Tone.context.state !== 'running') { console.warn("Snap sound: Audio context not running."); return; }
+            // Check isMuted flag before playing (optional, Tone.Master handles it but good practice)
+            if (isMuted) return;
             try { snapSynth.triggerAttackRelease("C5", "8n", Tone.now()); } catch (error) { console.error("Error playing snap sound:", error); }
         }
 
@@ -301,35 +263,28 @@
         function playApplauseSound() {
             if (!clapVoice) { console.error("Cannot play applause: ClapVoice (NoiseSynth) not initialized."); return; }
             if (Tone.context.state !== 'running') { console.warn("Applause sound: Audio context not running."); return; }
+            // Check isMuted flag before playing
+            if (isMuted) return;
 
-            const numberOfClaps = 64;
+            const numberOfClaps = 64; // Increased clap count
             const timeSpreadMs = 800;
-            // Duration for NoiseSynth triggerAttackRelease is just the length of the sound
-            const clapDuration = 0.15; // Keep it short and percussive
+            const clapDuration = 0.20; // Adjusted slightly for sustain: attack+decay+sustain+release = 0.001 + 0.1 + 0.1 + 0.1 = 0.301. Let's use a slightly shorter trigger like 0.2
 
             console.log("Attempting to play applause using single NoiseSynth with setTimeout...");
             try {
                 for (let i = 0; i < numberOfClaps; i++) {
                     const randomOffsetMs = Math.random() * timeSpreadMs;
-                    // Use velocity variation (optional, but adds realism)
-                    const randomVelocity = 0.3 + Math.random() * 0.7;
-
                     setTimeout(() => {
-                        if (clapVoice && Tone.context.state === 'running') {
+                        if (clapVoice && Tone.context.state === 'running' && !isMuted) { // Check mute again inside timeout
                             try {
-                                // Trigger the single NoiseSynth instance
-                                // Velocity parameter works with triggerAttackRelease for NoiseSynth
-                                clapVoice.triggerAttackRelease(clapDuration, `+${randomOffsetMs / 1000}`, randomVelocity);
+                                clapVoice.triggerAttackRelease(clapDuration);
                             } catch (triggerError) {
                                  console.error(`Error triggering clap inside setTimeout:`, triggerError);
                             }
                         }
-                    }, 0); // Schedule immediately relative to loop, Tone handles the internal timing offset
-                                       // Using setTimeout(..., 0) just defers execution slightly, might help avoid blocking
-                                       // The actual timing is handled by the second argument to triggerAttackRelease: `+${randomOffsetMs / 1000}`
-                                       // This tells Tone.js to play it 'randomOffsetMs / 1000' seconds from Tone.now()
+                    }, randomOffsetMs);
                 }
-                console.log("Applause trigger loop finished.");
+                console.log("Applause setTimeout loop finished scheduling.");
             } catch (error) {
                 console.error("Error in playApplauseSound scheduling loop:", error);
             }
@@ -342,6 +297,7 @@
             isMuted = !isMuted;
             if (Tone.Master) { Tone.Master.mute = isMuted; }
             else { console.warn("Tone.Master not available to set mute state."); }
+            // Update icon based on the new state
             muteIcon.src = isMuted ? iconVolumeOff : iconVolumeOn;
             muteButton.setAttribute('aria-label', isMuted ? 'Unmute Sounds' : 'Mute Sounds');
             console.log("Mute toggled:", isMuted);
@@ -386,32 +342,34 @@
             if (distance <= snap_tolerance) {
                 const pieceElement = droppedPiece;
                 pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.style.opacity = '1'; pieceElement.draggable = false; pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
+                // Remove glow after delay
                 setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
                 correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); }
-                else { playSnapSound(); }
+                if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); } // Delayed success
+                else { playSnapSound(); } // Play snap only if not complete
              } else { if(droppedPiece) droppedPiece.style.opacity = '1'; }
              draggedPiece = null;
         }
 
         // --- Touch Event Handlers (Optimized) ---
-        function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); draggedPiece = e.target; const touch = e.touches[0]; const rect = draggedPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; initialX = rect.left; initialY = rect.top; currentX = initialX; currentY = initialY; draggedPiece.classList.add('dragging'); draggedPiece.style.position = 'fixed'; draggedPiece.style.left = `${initialX}px`; draggedPiece.style.top = `${initialY}px`; draggedPiece.style.transform = 'scale(1.05)'; isDragging = true; if (!touchMoveRafId) { touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); } /*console.log(`Touch start on piece: ${draggedPiece.id}`);*/ }
+        function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); draggedPiece = e.target; const touch = e.touches[0]; const rect = draggedPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; initialX = rect.left; initialY = rect.top; currentX = initialX; currentY = initialY; draggedPiece.classList.add('dragging'); draggedPiece.style.position = 'fixed'; draggedPiece.style.left = `${initialX}px`; draggedPiece.style.top = `${initialY}px`; draggedPiece.style.transform = 'scale(1.05)'; isDragging = true; if (!touchMoveRafId) { touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); } }
         function handleTouchMove(e) { if (!isDragging || !draggedPiece) return; e.preventDefault(); const touch = e.touches[0]; currentX = touch.clientX - touchOffsetX; currentY = touch.clientY - touchOffsetY; }
         function updateTouchDragPosition() { if (!isDragging || !draggedPiece) { touchMoveRafId = null; return; } draggedPiece.style.left = `${currentX}px`; draggedPiece.style.top = `${currentY}px`; touchMoveRafId = requestAnimationFrame(updateTouchDragPosition); }
         function handleTouchEnd(e) {
             if (!isDragging || !draggedPiece) return;
             if (touchMoveRafId) { cancelAnimationFrame(touchMoveRafId); touchMoveRafId = null; }
             isDragging = false; const pieceElement = draggedPiece;
-            pieceElement.classList.remove('dragging'); pieceElement.style.transform = 'scale(1)'; pieceElement.style.opacity = '1'; /*console.log(`Touch end for piece: ${pieceElement.id}`);*/
+            pieceElement.classList.remove('dragging'); pieceElement.style.transform = 'scale(1)'; pieceElement.style.opacity = '1';
             const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceRect = pieceElement.getBoundingClientRect(); const pieceCenterX = pieceRect.left + pieceRect.width / 2; const pieceCenterY = pieceRect.top + pieceRect.height / 2;
             if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right && pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
                 const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
                 if (distance <= snap_tolerance) {
                     pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.draggable = false; pieceElement.removeEventListener('touchstart', handleTouchStart); pieceElement.removeEventListener('touchmove', handleTouchMove); pieceElement.removeEventListener('touchend', handleTouchEnd); pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
-                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
+                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500); // Remove glow
                     correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
-                    if (correctlyPlacedCount === currentGridSize * currentGridSize) { console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); }
-                    else { playSnapSound(); }
+                    if (correctlyPlacedCount === currentGridSize * currentGridSize) {
+                        console.log("Puzzle Solved!"); playApplauseSound(); setTimeout(showSuccessMessage, 1000); // Delayed success
+                    } else { playSnapSound(); } // Play snap only if not complete
                 } else { snapPieceBack(pieceElement); }
             } else { snapPieceBack(pieceElement); }
             draggedPiece = null;
@@ -437,9 +395,13 @@
             populateGridSizeSelector();
             gridSizeSelect.addEventListener('change', (event) => { loadImage(currentImageUrl, setupBoardAndPieces); });
             muteButton.addEventListener('click', toggleMute);
+            // Set initial mute button state based on isMuted default
+            muteIcon.src = isMuted ? iconVolumeOff : iconVolumeOn;
+            muteButton.setAttribute('aria-label', isMuted ? 'Unmute Sounds' : 'Mute Sounds');
+
             currentImageUrl = availableImages[0].path;
             currentGridSize = parseInt(gridSizeSelect.value, 10);
-            loadImage(currentImageUrl, setupBoardAndPieces); // Start loading default image
+            loadImage(currentImageUrl, setupBoardAndPieces);
         }
 
         // Run initialization when the DOM is ready
