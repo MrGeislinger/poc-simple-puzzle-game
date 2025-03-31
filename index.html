@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Puzzle Game</title>
+    <title>Customizable Puzzle Game</title>
     
     
     <script src="https://cdn.tailwindcss.com"></script> 
@@ -16,28 +16,30 @@
         }
         /* Style for the puzzle pieces */
         .puzzle-piece {
-            background-size: 300% 300%; /* 3x3 grid -> image scaled 300% */
-            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1); /* Inset shadow for edge + outer shadow */
+            /* background-size will be set dynamically by JS */
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1);
             cursor: grab;
             position: absolute;
-            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease;
+            transition: transform 0.2s ease-in-out, box-shadow 0.3s ease, top 0.2s ease, left 0.2s ease;
             z-index: 10;
-            border-radius: 4px;
-            background-repeat: no-repeat; /* Prevent background repeating */
+            border-radius: 4px; /* Slightly rounded corners for pieces */
+            background-repeat: no-repeat;
         }
         .puzzle-piece:active {
             cursor: grabbing;
             z-index: 20;
             transform: scale(1.05);
             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2);
+            transition: none; /* Disable transition while actively dragging */
         }
         /* Style for the target puzzle board */
         #puzzle-board {
             position: relative;
             border: 2px dashed #a0aec0;
-            background-color: #f7fafc;
+            background-color: #f0f4f8; /* Slightly different background */
             overflow: hidden;
-            border-radius: 8px;
+            border-radius: 8px; /* Rounded corners for board */
+            transition: background-image 0.5s ease-in-out; /* Smooth background change */
         }
         /* Transparent background guide image */
         #puzzle-board::before {
@@ -46,32 +48,34 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background-image: var(--puzzle-background-image);
             background-size: 100% 100%;
-            opacity: 0.25;
+            opacity: 0.2; /* Slightly less opaque guide */
             z-index: 1;
             border-radius: inherit;
             pointer-events: none;
+            transition: background-image 0.5s ease-in-out;
         }
         /* Style for the container holding shuffled pieces */
         #pieces-container {
             position: relative;
             border: 1px solid #e2e8f0;
             background-color: #edf2f7;
-            min-height: 150px;
+            min-height: 200px;
             border-radius: 8px;
+            padding: 5px;
         }
         /* Glow effect for snapped pieces */
         .glow {
-           box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 0 15px 5px #68d391; /* Green glow */
+           box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 0 15px 5px #68d391;
            z-index: 5;
            cursor: default;
-           /* Transition for smooth removal */
            transition: box-shadow 0.3s ease-out;
        }
         /* Style for placeholder slots */
         .placeholder-slot {
             position: absolute;
-            background-color: rgba(203, 213, 224, 0.1);
-            border-radius: 4px;
+            /* border: 1px dotted #cbd5e0; */ /* Keep commented out unless debugging */
+            background-color: rgba(203, 213, 224, 0.05); /* Very faint */
+            border-radius: 2px; /* Smaller radius for slots */
             z-index: 2;
         }
         /* Success message styling */
@@ -81,12 +85,35 @@
          /* Loading message styling */
         #loading-message {
              transition: opacity 0.3s ease-in-out;
+             border-radius: 8px; /* Match container rounding */
         }
-        /* Input error styling */
-        #url-error-message {
-            color: #e53e3e; /* Red color for errors */
-            font-size: 0.875rem; /* Smaller text */
-            height: 1.25rem; /* Reserve space to prevent layout shift */
+        /* Error message styling */
+        #load-error-message {
+            color: #e53e3e;
+            font-size: 0.875rem;
+            height: 1.25rem;
+            text-align: center;
+        }
+        /* Style select dropdowns */
+        select {
+            -webkit-appearance: none; -moz-appearance: none; appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236B7280%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat; background-position: right 0.7rem center; background-size: 0.65em auto; padding-right: 2.5rem;
+        }
+        /* Style for image selection buttons */
+        .image-select-button {
+            border: 2px solid #d1d5db; /* Gray border */
+            transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .image-select-button.selected {
+            border-color: #4f46e5; /* Indigo border for selected */
+            background-color: #e0e7ff; /* Light indigo background */
+        }
+        .image-select-button:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #4f46e5;
         }
     </style>
 </head>
@@ -94,38 +121,34 @@
 
     <h1 class="text-2xl md:text-3xl font-bold text-gray-700 mb-6">Puzzle Time!</h1>
 
-    
-    <div class="w-full max-w-xl mx-auto mb-6 p-4 bg-white rounded-lg shadow-md">
-        <label for="image-url-input" class="block text-sm font-medium text-gray-700 mb-1">Load puzzle from URL:</label>
-        <div class="flex flex-col sm:flex-row gap-2">
-            <input type="url" id="image-url-input" placeholder="https://..." class="flex-grow block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-            <button id="load-image-button" class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out whitespace-nowrap">
-                Load Puzzle
-            </button>
+    <div class="w-full max-w-xl mx-auto mb-4 p-4 bg-white rounded-lg shadow-md">
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2 text-center">Choose Puzzle Image:</label>
+            <div id="image-selector-container" class="flex flex-wrap gap-3 justify-center">
+                </div>
         </div>
-        <p id="url-error-message" class="mt-1 h-5"></p> 
-    </div>
+
+        <div class="flex justify-center items-center gap-3">
+            <label for="grid-size-select" class="text-sm font-medium text-gray-700">Grid Size:</label>
+            <select id="grid-size-select" class="w-auto px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </select>
+        </div>
+        <p id="load-error-message" class="mt-2 h-5"></p> </div>
 
     <div class="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-start">
-        
-        
-        <div class="bg-white p-4 rounded-lg shadow-md">
+        <div class="bg-white p-4 rounded-lg shadow-md order-2 md:order-1">
             <h2 class="text-lg font-semibold text-gray-600 mb-4 text-center">Drag Pieces From Here</h2>
             <div id="pieces-container" class="relative h-64 md:h-96 border border-gray-300 rounded-md bg-gray-50">
-                <p id="loading-message" class="absolute inset-0 flex items-center justify-center text-gray-500 bg-white bg-opacity-80 z-30 opacity-0 pointer-events-none">Loading puzzle...</p>
+                <p id="loading-message" class="absolute inset-0 flex items-center justify-center text-gray-500 bg-white bg-opacity-80 z-30 opacity-0 pointer-events-none rounded-md">Loading puzzle...</p>
             </div>
         </div>
-
-        
-        <div class="bg-white p-4 rounded-lg shadow-md">
+        <div class="bg-white p-4 rounded-lg shadow-md order-1 md:order-2">
              <h2 class="text-lg font-semibold text-gray-600 mb-4 text-center">Place Pieces Here</h2>
             <div id="puzzle-board" class="relative border-2 border-dashed border-gray-400 rounded-md aspect-square max-w-full mx-auto">
-                
-            </div>
+                </div>
          </div>
     </div>
 
-    
     <div id="success-message" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center opacity-0 pointer-events-none z-50">
         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
             <h2 class="text-3xl font-bold text-green-600 mb-4">Congratulations!</h2>
@@ -134,31 +157,38 @@
         </div>
     </div>
 
-    
-    <img id="puzzle-image-source" src="https://t4.ftcdn.net/jpg/10/35/40/59/360_F_1035405936_qI2uP0IG1ZUzijmz4tlU1i2Da7fzIBtY.jpg" alt="Puzzle Source" class="hidden" crossOrigin="anonymous">
-
     <script>
         // --- Configuration ---
-        const grid_size = 3;
-        const snap_tolerance = 35;
+        const defaultGridSize = 3;
+        const snap_tolerance = 35; // Pixels within which the piece snaps
+
+        // --- Available Images ---
+        // IMPORTANT: Paths like "images/..." only work if served from a web server.
+        // They won't work if you open the HTML file directly from your computer.
+        const availableImages = [
+            { name: "Unicorn", path: "unicorn.png", emoji: "🦄" },
+            { name: "Kitten", path: "images/kitten.png", emoji: "🐱" }, // Example: Assumes images/kitten.png exists
+            { name: "Puppy", path: "images/puppy.png", emoji: "🐶" },   // Example: Assumes images/puppy.png exists
+            // Add more images here following the pattern { name: "Display Name", path: "path/to/image.jpg", emoji: "❓" }
+        ];
 
         // --- Elements ---
-        const imageElement = document.getElementById('puzzle-image-source');
         const piecesContainer = document.getElementById('pieces-container');
         const puzzleBoard = document.getElementById('puzzle-board');
         const successMessage = document.getElementById('success-message');
         const loadingMessage = document.getElementById('loading-message');
-        const imageUrlInput = document.getElementById('image-url-input');
-        const loadImageButton = document.getElementById('load-image-button');
-        const urlErrorMessage = document.getElementById('url-error-message');
+        const imageSelectorContainer = document.getElementById('image-selector-container');
+        const gridSizeSelect = document.getElementById('grid-size-select');
+        const loadErrorMessage = document.getElementById('load-error-message');
 
         // --- State ---
-        let currentImageUrl = imageElement.src;
+        let currentImageUrl = ''; // Will be set on initial load
+        let currentGridSize = defaultGridSize;
         let pieces = [];
-        let imageWidth, imageHeight;
-        let boardWidth, boardHeight;
+        let imageWidth, imageHeight; // Dimensions of the currently loaded image
+        let boardWidth, boardHeight; // Display dimensions of the board
         let correctlyPlacedCount = 0;
-        let snapSynth; // Synth for the snap sound
+        let snapSynth;
         let clapVoice; // Single NoiseSynth instance for applause
 
         // --- Sound Initialization ---
@@ -168,14 +198,21 @@
                      if (Tone.context.state !== 'running') {
                          Tone.start().then(() => {
                              console.log("Audio Context started by user interaction.");
-                             if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
+                             // Initialize snap synth
+                             if (!snapSynth) {
+                                 try {
+                                     snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination();
+                                     console.log("SnapSynth initialized.");
+                                 } catch (e) { console.error("Error initializing SnapSynth:", e); }
+                             }
+                             // Initialize SINGLE NoiseSynth for clapping
                              if (!clapVoice) {
                                  try {
                                      clapVoice = new Tone.NoiseSynth({
                                          noise: { type: 'pink' },
-                                         // *** UPDATED ENVELOPE ***
-                                         envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, // Added sustain
-                                         volume: -12 // Adjusted volume slightly
+                                         // Envelope with sustain for applause
+                                         envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 },
+                                         volume: -12 // Adjusted volume
                                      }).toDestination();
                                      console.log("ClapVoice (NoiseSynth) initialized.");
                                  } catch (e) {
@@ -185,20 +222,9 @@
                          }).catch(e => { console.error("Error starting Tone.js AudioContext:", e); });
                      } else {
                           console.log("Audio Context already running.");
+                         // Initialize if needed (with try/catch)
                          if (!snapSynth) { try { snapSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 } }).toDestination(); console.log("SnapSynth initialized."); } catch (e) { console.error("Error initializing SnapSynth:", e); } }
-                         if (!clapVoice) {
-                             try {
-                                 clapVoice = new Tone.NoiseSynth({
-                                     noise: { type: 'pink' },
-                                     // *** UPDATED ENVELOPE ***
-                                     envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, // Added sustain
-                                     volume: -12
-                                 }).toDestination();
-                                 console.log("ClapVoice (NoiseSynth) initialized.");
-                             } catch (e) {
-                                 console.error("Error initializing ClapVoice (NoiseSynth):", e);
-                             }
-                         }
+                         if (!clapVoice) { try { clapVoice = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }, volume: -12 }).toDestination(); console.log("ClapVoice (NoiseSynth) initialized."); } catch (e) { console.error("Error initializing ClapVoice (NoiseSynth):", e); } }
                      }
                      document.body.removeEventListener('pointerdown', startAudio); document.body.removeEventListener('touchstart', startAudio);
                  };
@@ -218,21 +244,19 @@
             if (!clapVoice) { console.error("Cannot play applause: ClapVoice (NoiseSynth) failed to initialize or not ready."); return; }
             if (Tone.context.state !== 'running') { console.warn("Applause sound: Audio context not running."); return; }
 
-            // *** UPDATED CLAP COUNT ***
-            const numberOfClaps = 64;
-            const timeSpreadMs = 800; // Slightly increased spread for more claps
-            // Duration should be approx attack + decay + sustain + release
-            const clapDuration = 0.001 + 0.1 + 0.1 + 0.1; // Adjusted based on new envelope
+            const numberOfClaps = 64; // Increased clap count
+            const timeSpreadMs = 800;
+            // Duration should roughly match the envelope's total time
+            const clapDuration = clapVoice.envelope.attack + clapVoice.envelope.decay + clapVoice.envelope.sustain + clapVoice.envelope.release;
 
             console.log("Attempting to play applause using single NoiseSynth with setTimeout...");
             try {
                 for (let i = 0; i < numberOfClaps; i++) {
                     const randomOffsetMs = Math.random() * timeSpreadMs;
-
                     setTimeout(() => {
                         if (clapVoice && Tone.context.state === 'running') {
                             try {
-                                // Trigger with calculated duration based on envelope
+                                // Use triggerAttackRelease on the single instance
                                 clapVoice.triggerAttackRelease(clapDuration);
                             } catch (triggerError) {
                                  console.error(`Error triggering clap inside setTimeout:`, triggerError);
@@ -246,49 +270,91 @@
             }
         }
 
+        // --- Image Loading ---
+        function loadImage(url, callback) {
+            console.log("Attempting to load image:", url);
+            loadErrorMessage.textContent = '';
+            loadingMessage.style.opacity = '1';
+            loadingMessage.style.pointerEvents = 'auto';
 
-        // --- Image Loading and Setup ---
-        imageElement.onload = () => { console.log("Image loaded successfully:", imageElement.src); loadingMessage.style.opacity = '0'; loadingMessage.style.pointerEvents = 'none'; urlErrorMessage.textContent = ''; currentImageUrl = imageElement.src; imageWidth = imageElement.naturalWidth; imageHeight = imageElement.naturalHeight; if (imageWidth === 0 || imageHeight === 0) { console.error("Image loaded but has zero dimensions."); urlErrorMessage.textContent = "Image loaded but seems invalid (zero size)."; puzzleBoard.innerHTML = ''; piecesContainer.innerHTML = ''; return; } console.log(`Image dimensions: ${imageWidth}x${imageHeight}`); setupBoardAndPieces(); initializeSound(); };
-        imageElement.onerror = () => { console.error("Error loading image:", imageElement.src); loadingMessage.style.opacity = '0'; loadingMessage.style.pointerEvents = 'none'; urlErrorMessage.textContent = "Failed to load image. Check URL and CORS policy."; puzzleBoard.innerHTML = '<p class="text-red-600 p-4">Image failed to load.</p>'; piecesContainer.innerHTML = ''; };
+            const img = new Image();
+            // No crossOrigin attribute for potentially local files
 
-        // --- Load New Image Function ---
-        function loadNewImage(url) { if (!url || url.trim() === '') { urlErrorMessage.textContent = "Please enter an image URL."; return; } try { new URL(url); } catch (_) { urlErrorMessage.textContent = "Invalid URL format."; return; } console.log("Attempting to load new image:", url); urlErrorMessage.textContent = ''; loadingMessage.style.opacity = '1'; loadingMessage.style.pointerEvents = 'auto'; imageElement.src = url; }
+            img.onload = () => {
+                console.log("Image loaded successfully:", url);
+                loadingMessage.style.opacity = '0';
+                loadingMessage.style.pointerEvents = 'none';
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                     console.error("Image loaded but has zero dimensions:", url);
+                     loadErrorMessage.textContent = "Image seems invalid (zero size).";
+                     callback(null);
+                } else {
+                    currentImageUrl = url; // Update global state
+                    callback(img);
+                }
+            };
 
-        // --- Event Listener for Load Button ---
-        loadImageButton.addEventListener('click', () => { loadNewImage(imageUrlInput.value); });
-        imageUrlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { loadNewImage(imageUrlInput.value); } });
+            img.onerror = (event) => {
+                console.error("Error loading image:", url, event);
+                loadingMessage.style.opacity = '0';
+                loadingMessage.style.pointerEvents = 'none';
+                if (url.startsWith("file:") || (!url.startsWith("http:") && !url.startsWith("https:") && !url.startsWith("blob:") && !url.startsWith("data:"))) {
+                     loadErrorMessage.textContent = "Error: Cannot load local images directly. Please use a web server.";
+                } else {
+                     loadErrorMessage.textContent = "Failed to load image. Check URL or server.";
+                }
+                callback(null);
+            };
+
+            img.src = url;
+        }
+
 
         // --- Setup Board and Pieces ---
-        function setupBoardAndPieces() { const boardContainerWidth = puzzleBoard.offsetWidth; if (boardContainerWidth === 0 || !imageWidth) { requestAnimationFrame(setupBoardAndPieces); return; } const aspectRatio = imageWidth / imageHeight; boardWidth = boardContainerWidth; boardHeight = boardWidth / aspectRatio; puzzleBoard.style.height = `${boardHeight}px`; puzzleBoard.style.width = `${boardWidth}px`; puzzleBoard.style.setProperty('--puzzle-background-image', `url(${currentImageUrl})`); const scaledPieceWidth = boardWidth / grid_size; const scaledPieceHeight = boardHeight / grid_size; console.log(`Board dimensions: ${boardWidth}x${boardHeight}`); console.log(`Scaled piece dimensions: ${scaledPieceWidth}x${scaledPieceHeight}`); pieces = []; puzzleBoard.innerHTML = ''; piecesContainer.innerHTML = ''; correctlyPlacedCount = 0; for (let i = 0; i < grid_size; i++) { for (let j = 0; j < grid_size; j++) { const pieceIndex = i * grid_size + j; const slot = document.createElement('div'); slot.classList.add('placeholder-slot'); slot.style.width = `${scaledPieceWidth}px`; slot.style.height = `${scaledPieceHeight}px`; slot.style.top = `${i * scaledPieceHeight}px`; slot.style.left = `${j * scaledPieceWidth}px`; slot.dataset.index = pieceIndex; puzzleBoard.appendChild(slot); const piece = document.createElement('div'); piece.id = `piece-${pieceIndex}`; piece.classList.add('puzzle-piece'); piece.draggable = true; piece.dataset.index = pieceIndex; piece.dataset.correctX = j * scaledPieceWidth; piece.dataset.correctY = i * scaledPieceHeight; piece.style.width = `${scaledPieceWidth}px`; piece.style.height = `${scaledPieceHeight}px`; piece.style.backgroundImage = `url(${currentImageUrl})`; const bgPosX_pixels = -j * scaledPieceWidth; const bgPosY_pixels = -i * scaledPieceHeight; piece.style.backgroundPosition = `${bgPosX_pixels}px ${bgPosY_pixels}px`; piece.style.backgroundSize = `${grid_size * 100}% ${grid_size * 100}%`; piece.addEventListener('dragstart', handleDragStart); piece.addEventListener('dragend', handleDragEnd); piece.addEventListener('touchstart', handleTouchStart, { passive: false }); piece.addEventListener('touchmove', handleTouchMove, { passive: false }); piece.addEventListener('touchend', handleTouchEnd); pieces.push(piece); } } shuffleAndPlacePieces(); puzzleBoard.addEventListener('dragover', handleDragOver); puzzleBoard.addEventListener('drop', handleDrop); }
+        function setupBoardAndPieces(loadedImage) {
+            if (!loadedImage) {
+                 puzzleBoard.innerHTML = `<p class="text-red-600 p-4">${loadErrorMessage.textContent || "Select an image to start."}</p>`;
+                 piecesContainer.innerHTML = '';
+                return;
+            }
+            currentGridSize = parseInt(gridSizeSelect.value, 10);
+            console.log(`Setting up puzzle with grid size: ${currentGridSize}x${currentGridSize}`);
+            imageWidth = loadedImage.naturalWidth; imageHeight = loadedImage.naturalHeight;
+            const boardContainerWidth = puzzleBoard.offsetWidth;
+            if (boardContainerWidth === 0) { console.warn("Board container not ready yet, delaying setup."); requestAnimationFrame(() => setupBoardAndPieces(loadedImage)); return; }
+            const aspectRatio = imageWidth / imageHeight; boardWidth = boardContainerWidth; boardHeight = boardWidth / aspectRatio; puzzleBoard.style.height = `${boardHeight}px`; puzzleBoard.style.width = `${boardWidth}px`; puzzleBoard.style.setProperty('--puzzle-background-image', `url(${currentImageUrl})`);
+            const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const totalPieces = currentGridSize * currentGridSize;
+            console.log(`Board dimensions: ${boardWidth}x${boardHeight}`); console.log(`Scaled piece dimensions: ${scaledPieceWidth}x${scaledPieceHeight}`);
+            pieces = []; puzzleBoard.innerHTML = ''; piecesContainer.innerHTML = ''; correctlyPlacedCount = 0;
+            for (let i = 0; i < currentGridSize; i++) { for (let j = 0; j < currentGridSize; j++) { const pieceIndex = i * currentGridSize + j; const slot = document.createElement('div'); slot.classList.add('placeholder-slot'); slot.style.width = `${scaledPieceWidth}px`; slot.style.height = `${scaledPieceHeight}px`; slot.style.top = `${i * scaledPieceHeight}px`; slot.style.left = `${j * scaledPieceWidth}px`; slot.dataset.index = pieceIndex; puzzleBoard.appendChild(slot); const piece = document.createElement('div'); piece.id = `piece-${pieceIndex}`; piece.classList.add('puzzle-piece'); piece.draggable = true; piece.dataset.index = pieceIndex; piece.dataset.correctX = j * scaledPieceWidth; piece.dataset.correctY = i * scaledPieceHeight; piece.style.width = `${scaledPieceWidth}px`; piece.style.height = `${scaledPieceHeight}px`; piece.style.backgroundImage = `url(${currentImageUrl})`; const bgPosX_pixels = -j * scaledPieceWidth; const bgPosY_pixels = -i * scaledPieceHeight; piece.style.backgroundPosition = `${bgPosX_pixels}px ${bgPosY_pixels}px`; piece.style.backgroundSize = `${currentGridSize * 100}% ${currentGridSize * 100}%`; piece.addEventListener('dragstart', handleDragStart); piece.addEventListener('dragend', handleDragEnd); piece.addEventListener('touchstart', handleTouchStart, { passive: false }); piece.addEventListener('touchmove', handleTouchMove, { passive: false }); piece.addEventListener('touchend', handleTouchEnd); pieces.push(piece); } }
+            shuffleAndPlacePieces(); puzzleBoard.addEventListener('dragover', handleDragOver); puzzleBoard.addEventListener('drop', handleDrop); initializeSound();
+        }
 
         // --- Shuffling ---
-        function shuffleAndPlacePieces() { const shuffledPieces = [...pieces].sort(() => Math.random() - 0.5); const containerRect = piecesContainer.getBoundingClientRect(); if (containerRect.width === 0 || containerRect.height === 0 || !boardWidth) { console.warn("Container/board dimensions not ready for shuffling."); requestAnimationFrame(shuffleAndPlacePieces); return; } const scaledPieceWidth = boardWidth / grid_size; const scaledPieceHeight = boardHeight / grid_size; shuffledPieces.forEach(piece => { const pieceW = piece.offsetWidth || scaledPieceWidth; const pieceH = piece.offsetHeight || scaledPieceHeight; const maxPosX = containerRect.width - pieceW; const maxPosY = containerRect.height - pieceH; const randomX = Math.max(5, Math.random() * (maxPosX - 10)); const randomY = Math.max(5, Math.random() * (maxPosY - 10)); piece.style.left = `${randomX}px`; piece.style.top = `${randomY}px`; piece.style.position = 'absolute'; piecesContainer.appendChild(piece); }); }
+        function shuffleAndPlacePieces() { const shuffledPieces = [...pieces].sort(() => Math.random() - 0.5); const containerRect = piecesContainer.getBoundingClientRect(); if (containerRect.width === 0 || containerRect.height === 0 || !boardWidth) { console.warn("Container/board dimensions not ready for shuffling."); requestAnimationFrame(shuffleAndPlacePieces); return; } const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; shuffledPieces.forEach(piece => { const pieceW = piece.offsetWidth || scaledPieceWidth; const pieceH = piece.offsetHeight || scaledPieceHeight; const maxPosX = containerRect.width - pieceW; const maxPosY = containerRect.height - pieceH; const randomX = Math.max(5, Math.random() * (maxPosX - 10)); const randomY = Math.max(5, Math.random() * (maxPosY - 10)); piece.style.left = `${randomX}px`; piece.style.top = `${randomY}px`; piece.style.position = 'absolute'; piecesContainer.appendChild(piece); }); }
 
         // --- Drag and Drop Handlers ---
         let draggedPiece = null; let offsetX = 0; let offsetY = 0;
         function handleDragStart(e) { if (e.target.classList.contains('glow')) { e.preventDefault(); return; } draggedPiece = e.target; offsetX = e.offsetX; offsetY = e.offsetY; e.dataTransfer.setData('text/plain', draggedPiece.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => { if(draggedPiece) draggedPiece.style.opacity = '0.7'; }, 0); }
         function handleDragEnd(e) { if (draggedPiece) { if (draggedPiece.parentElement !== puzzleBoard) { draggedPiece.style.opacity = '1'; } draggedPiece = null; } }
         function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
-        function handleDrop(e) { e.preventDefault(); const pieceId = e.dataTransfer.getData('text/plain'); const droppedPiece = document.getElementById(pieceId); if (!droppedPiece || droppedPiece.parentElement === puzzleBoard) return; const boardRect = puzzleBoard.getBoundingClientRect(); const dropX = e.clientX - boardRect.left; const dropY = e.clientY - boardRect.top; const correctX = parseFloat(droppedPiece.dataset.correctX); const correctY = parseFloat(droppedPiece.dataset.correctY); const scaledPieceWidth = boardWidth / grid_size; const scaledPieceHeight = boardHeight / grid_size; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const pieceDropCenterX = dropX - offsetX + scaledPieceWidth / 2; const pieceDropCenterY = dropY - offsetY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(pieceDropCenterX - targetCenterX, 2) + Math.pow(pieceDropCenterY - targetCenterY, 2) );
+        function handleDrop(e) {
+            e.preventDefault(); const pieceId = e.dataTransfer.getData('text/plain'); const droppedPiece = document.getElementById(pieceId); if (!droppedPiece || droppedPiece.parentElement === puzzleBoard) return; const boardRect = puzzleBoard.getBoundingClientRect(); const dropX = e.clientX - boardRect.left; const dropY = e.clientY - boardRect.top; const correctX = parseFloat(droppedPiece.dataset.correctX); const correctY = parseFloat(droppedPiece.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const pieceDropCenterX = dropX - offsetX + scaledPieceWidth / 2; const pieceDropCenterY = dropY - offsetY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(pieceDropCenterX - targetCenterX, 2) + Math.pow(pieceDropCenterY - targetCenterY, 2) );
             if (distance <= snap_tolerance) {
-                const pieceElement = droppedPiece; // Reference for timeout
+                const pieceElement = droppedPiece; // Use consistent variable name
                 pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.style.opacity = '1'; pieceElement.draggable = false; pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
                 
-                // *** ADDED: Remove glow after delay ***
-                setTimeout(() => {
-                    pieceElement.classList.remove('glow');
-                }, 500); // 0.5 seconds
+                // Remove glow after delay
+                setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
 
-                correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${grid_size * grid_size}`);
-                if (correctlyPlacedCount === grid_size * grid_size) {
+                correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
+                if (correctlyPlacedCount === currentGridSize * currentGridSize) {
                      console.log("Puzzle Solved!");
                      playApplauseSound();
-                     // *** ADDED: Delay success message ***
-                     setTimeout(() => {
-                         showSuccessMessage();
-                     }, 1000); // 1 second delay
+                     // Delay success message
+                     setTimeout(showSuccessMessage, 1000); // 1 second delay
                 }
-                else { playSnapSound(); }
+                else { playSnapSound(); } // Play snap only if not complete
              } else { if(droppedPiece) droppedPiece.style.opacity = '1'; }
              draggedPiece = null;
         }
@@ -297,44 +363,93 @@
         let currentTouchPiece = null; let touchOffsetX = 0; let touchOffsetY = 0;
         function handleTouchStart(e) { if (!e.target.classList.contains('puzzle-piece') || e.target.classList.contains('glow')) return; e.preventDefault(); currentTouchPiece = e.target; const touch = e.touches[0]; const rect = currentTouchPiece.getBoundingClientRect(); touchOffsetX = touch.clientX - rect.left; touchOffsetY = touch.clientY - rect.top; currentTouchPiece.style.position = 'fixed'; currentTouchPiece.style.left = `${rect.left}px`; currentTouchPiece.style.top = `${rect.top}px`; currentTouchPiece.style.zIndex = '20'; currentTouchPiece.style.transform = 'scale(1.05)'; currentTouchPiece.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0,0,0,0.2)'; currentTouchPiece.style.opacity = '0.7'; }
         function handleTouchMove(e) { if (!currentTouchPiece) return; e.preventDefault(); const touch = e.touches[0]; const newX = touch.clientX - touchOffsetX; const newY = touch.clientY - touchOffsetY; currentTouchPiece.style.left = `${newX}px`; currentTouchPiece.style.top = `${newY}px`; }
-        function handleTouchEnd(e) { if (!currentTouchPiece) return; const pieceElement = currentTouchPiece; // Reference for timeout
-            pieceElement.style.zIndex = '10'; pieceElement.style.transform = 'scale(1)'; pieceElement.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1)'; pieceElement.style.opacity = '1'; const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceWidthCurrent = pieceElement.offsetWidth; const pieceHeightCurrent = pieceElement.offsetHeight; const pieceCenterX = touch.clientX - touchOffsetX + pieceWidthCurrent / 2; const pieceCenterY = touch.clientY - touchOffsetY + pieceHeightCurrent / 2;
+        function handleTouchEnd(e) { if (!currentTouchPiece) return; const pieceElement = currentTouchPiece; pieceElement.style.zIndex = '10'; pieceElement.style.transform = 'scale(1)'; pieceElement.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0,0,0,0.1)'; pieceElement.style.opacity = '1'; const touch = e.changedTouches[0]; const boardRect = puzzleBoard.getBoundingClientRect(); const pieceWidthCurrent = pieceElement.offsetWidth; const pieceHeightCurrent = pieceElement.offsetHeight; const pieceCenterX = touch.clientX - touchOffsetX + pieceWidthCurrent / 2; const pieceCenterY = touch.clientY - touchOffsetY + pieceHeightCurrent / 2;
             if (pieceCenterX >= boardRect.left && pieceCenterX <= boardRect.right && pieceCenterY >= boardRect.top && pieceCenterY <= boardRect.bottom) {
-                const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / grid_size; const scaledPieceHeight = boardHeight / grid_size; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
+                const dropX = pieceCenterX - boardRect.left; const dropY = pieceCenterY - boardRect.top; const correctX = parseFloat(pieceElement.dataset.correctX); const correctY = parseFloat(pieceElement.dataset.correctY); const scaledPieceWidth = boardWidth / currentGridSize; const scaledPieceHeight = boardHeight / currentGridSize; const targetCenterX = correctX + scaledPieceWidth / 2; const targetCenterY = correctY + scaledPieceHeight / 2; const distance = Math.sqrt( Math.pow(dropX - targetCenterX, 2) + Math.pow(dropY - targetCenterY, 2) );
                 if (distance <= snap_tolerance) {
                     pieceElement.style.position = 'absolute'; pieceElement.style.left = `${correctX}px`; pieceElement.style.top = `${correctY}px`; pieceElement.draggable = false; pieceElement.removeEventListener('touchstart', handleTouchStart); pieceElement.removeEventListener('touchmove', handleTouchMove); pieceElement.removeEventListener('touchend', handleTouchEnd); pieceElement.classList.add('glow'); pieceElement.style.cursor = 'default'; puzzleBoard.appendChild(pieceElement);
                    
-                   // *** ADDED: Remove glow after delay ***
-                   setTimeout(() => {
-                       pieceElement.classList.remove('glow');
-                   }, 500); // 0.5 seconds
+                   // Remove glow after delay
+                   setTimeout(() => { pieceElement.classList.remove('glow'); }, 500);
 
-                    correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${grid_size * grid_size}`);
-                    if (correctlyPlacedCount === grid_size * grid_size) {
+                    correctlyPlacedCount++; console.log(`Correctly placed: ${correctlyPlacedCount}/${currentGridSize * currentGridSize}`);
+                    if (correctlyPlacedCount === currentGridSize * currentGridSize) {
                         console.log("Puzzle Solved!");
                         playApplauseSound();
-                         // *** ADDED: Delay success message ***
-                         setTimeout(() => {
-                            showSuccessMessage();
-                         }, 1000); // 1 second delay
+                        // Delay success message
+                        setTimeout(showSuccessMessage, 1000); // 1 second delay
                     }
-                    else { playSnapSound(); }
+                    else { playSnapSound(); } // Play snap only if not complete
                 } else { snapPieceBack(pieceElement); }
             } else { snapPieceBack(pieceElement); }
             currentTouchPiece = null;
         }
-        function snapPieceBack(piece) { piecesContainer.appendChild(piece); const containerRect = piecesContainer.getBoundingClientRect(); const pieceW = piece.offsetWidth || (boardWidth / grid_size); const pieceH = piece.offsetHeight || (boardHeight / grid_size); const containerW = containerRect.width; const containerH = containerRect.height; if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.position = 'absolute'; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; } }
+        function snapPieceBack(piece) { piecesContainer.appendChild(piece); const containerRect = piecesContainer.getBoundingClientRect(); const pieceW = piece.offsetWidth || (boardWidth / currentGridSize); const pieceH = piece.offsetHeight || (boardHeight / currentGridSize); const containerW = containerRect.width; const containerH = containerRect.height; if (containerW > pieceW && containerH > pieceH) { const maxPosX = containerW - pieceW; const maxPosY = containerH - pieceH; piece.style.position = 'absolute'; piece.style.left = `${Math.max(5, Math.random() * (maxPosX - 10))}px`; piece.style.top = `${Math.max(5, Math.random() * (maxPosY - 10))}px`; } else { piece.style.position = 'relative'; piece.style.left = 'auto'; piece.style.top = 'auto'; } }
 
         // --- Success ---
         function showSuccessMessage() { successMessage.style.opacity = '1'; successMessage.style.pointerEvents = 'auto'; }
 
         // --- Resize Handling ---
         function debounce(func, wait) { let timeout; return function executedFunction(...args) { const later = () => { clearTimeout(timeout); func(...args); }; clearTimeout(timeout); timeout = setTimeout(later, wait); }; }
-        const handleResize = debounce(() => { console.log("Window resized, recalculating layout..."); if(imageWidth && imageHeight) { setupBoardAndPieces(); } }, 250);
+        const handleResize = debounce(() => { console.log("Window resized, recalculating layout..."); if(currentImageUrl && imageWidth && imageHeight) { loadImage(currentImageUrl, setupBoardAndPieces); } }, 250);
         window.addEventListener('resize', handleResize);
 
-        // --- Initial Load ---
-         if (imageElement.complete && imageElement.naturalWidth > 0) { console.log("Default image already loaded."); imageElement.onload(); } else if (!imageElement.complete || imageElement.naturalWidth === 0) { console.log("Default image not loaded yet, showing loading message."); loadingMessage.style.opacity = '1'; loadingMessage.style.pointerEvents = 'auto'; }
+        // --- Populate UI Controls ---
+        function populateImageSelector() {
+            imageSelectorContainer.innerHTML = ''; // Clear existing buttons
+            availableImages.forEach((imgData, index) => {
+                const button = document.createElement('button');
+                button.classList.add('image-select-button', 'p-2', 'rounded-md', 'text-center', 'bg-white', 'hover:bg-gray-100');
+                button.dataset.imagePath = imgData.path;
+                button.innerHTML = `
+                    <span class="text-2xl block">${imgData.emoji}</span>
+                    <span class="block text-xs mt-1">${imgData.name}</span>
+                `;
+                button.addEventListener('click', () => {
+                    // Remove selected class from all buttons
+                    document.querySelectorAll('.image-select-button').forEach(btn => btn.classList.remove('selected'));
+                    // Add selected class to clicked button
+                    button.classList.add('selected');
+                    // Load the image
+                    loadImage(imgData.path, setupBoardAndPieces);
+                });
+                imageSelectorContainer.appendChild(button);
+                // Select the first button by default
+                if (index === 0) {
+                    button.classList.add('selected');
+                }
+            });
+        }
+
+        function populateGridSizeSelector() {
+            for (let size = 2; size <= 16; size++) {
+                const option = document.createElement('option');
+                option.value = size;
+                option.textContent = `${size} x ${size}`;
+                if (size === defaultGridSize) {
+                    option.selected = true;
+                }
+                gridSizeSelect.appendChild(option);
+            }
+            gridSizeSelect.addEventListener('change', (event) => {
+                // Reload the current image with the new grid size
+                loadImage(currentImageUrl, setupBoardAndPieces);
+            });
+        }
+
+        // --- Initial Game Setup ---
+        function initializeGame() {
+            populateImageSelector();
+            populateGridSizeSelector();
+
+            // Initial load with default image and grid size
+            currentImageUrl = availableImages[0].path;
+            currentGridSize = defaultGridSize;
+            loadImage(currentImageUrl, setupBoardAndPieces);
+        }
+
+        // Run initialization when the DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeGame);
 
     </script>
 
